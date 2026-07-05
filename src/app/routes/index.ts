@@ -8,11 +8,17 @@ import { ExpenseCategoryRoutes } from "../module/expenseCategory/expenseCategory
 import { MonthlyTargetRoutes } from "../module/monthlyTarget/monthlyTarget.route.js";
 import { ProductRoutes } from "../module/product/product.route.js";
 import { ShareholderRoutes } from "../module/shareholder/shareholder.route.js";
+import { SubscriptionRoutes } from "../module/subscription/subscription.route.js";
+import { SuperAdminRoutes } from "../module/superAdmin/superAdmin.route.js";
 import { SupplierRoutes } from "../module/supplier/supplier.route.js";
+import { UserRoutes } from "../module/user/user.route.js";
 
 const router = Router();
 
 router.use("/auth", AuthRoutes);
+router.use("/users", UserRoutes);
+router.use("/subscriptions", SubscriptionRoutes);
+router.use("/super-admin", SuperAdminRoutes);
 router.use("/business-settings", BusinessSettingsRoutes);
 router.use("/shareholders", ShareholderRoutes);
 router.use("/accounts", AccountRoutes);
