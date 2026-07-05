@@ -70,6 +70,24 @@ model SubscriptionPayment {
   @@map("subscription_payments")
 }
 
+// Server-backed recycle bin (was localStorage before). Pages push a snapshot
+// of the deleted record here; restore re-inserts the JSON into its table.
+model RecycleBinItem {
+  id         String   @id @default(uuid())
+  owner_id   String
+  type       String
+  title      String   @default("")
+  subtitle   String   @default("")
+  amount     Decimal  @default(0) @db.Decimal(15, 2)
+  table_name String   @default("")
+  data       Json?
+  deleted_at DateTime @default(now())
+  deleted_by String?
+
+  @@index([owner_id, type])
+  @@map("recycle_bin_items")
+}
+
 // Real data behind the Super Admin "Activity" page (was demo data before).
 model AdminActivity {
   id          String   @id @default(uuid())
