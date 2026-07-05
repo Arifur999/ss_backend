@@ -1,0 +1,167 @@
+// Finance domain: investments, profit withdrawals, loans, transfers,
+// expenses, other incomes.
+
+model Investment {
+  id               String   @id @default(uuid())
+  owner_id         String
+  date             DateTime @default(now()) @db.Date
+  shareholder_id   String?
+  shareholder_name String
+  invest_amount    Decimal  @default(0) @db.Decimal(15, 2)
+  withdraw_amount  Decimal  @default(0) @db.Decimal(15, 2)
+  account_id       String?
+  account_name     String
+  notes            String   @default("")
+  created_by       String?
+  created_at       DateTime @default(now())
+
+  shareholder Shareholder? @relation(fields: [shareholder_id], references: [id], onDelete: Restrict)
+  account     Account?     @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@index([owner_id])
+  @@index([date])
+  @@map("investments")
+}
+
+model ProfitWithdrawal {
+  id               String   @id @default(uuid())
+  owner_id         String
+  date             DateTime @default(now()) @db.Date
+  shareholder_id   String?
+  shareholder_name String
+  amount           Decimal  @default(0) @db.Decimal(15, 2)
+  account_id       String?
+  account_name     String
+  profit_month     Int?
+  profit_year      Int?
+  notes            String   @default("")
+  created_by       String?
+  created_at       DateTime @default(now())
+
+  shareholder Shareholder? @relation(fields: [shareholder_id], references: [id], onDelete: Restrict)
+  account     Account?     @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@index([owner_id])
+  @@index([date])
+  @@map("profit_withdrawals")
+}
+
+model LoanLender {
+  id              String     @id @default(uuid())
+  owner_id        String
+  name            String
+  lender_type     LenderType @default(person)
+  phone           String     @default("")
+  address         String     @default("")
+  opening_balance Decimal    @default(0) @db.Decimal(15, 2)
+  notes           String     @default("")
+  is_active       Boolean    @default(true)
+  deleted_at      DateTime?
+  deleted_by      String?
+  created_by      String?
+  created_at      DateTime   @default(now())
+
+  loans Loan[]
+
+  @@index([owner_id])
+  @@map("loan_lenders")
+}
+
+model Loan {
+  id               String              @id @default(uuid())
+  owner_id         String
+  date             DateTime            @default(now()) @db.Date
+  lender_id        String?
+  lender_name      String
+  loan_type        LoanType            @default(personal)
+  transaction_type LoanTransactionType @default(receive)
+  received_amount  Decimal             @default(0) @db.Decimal(15, 2)
+  payment_amount   Decimal             @default(0) @db.Decimal(15, 2)
+  interest_amount  Decimal             @default(0) @db.Decimal(15, 2)
+  account_id       String?
+  account_name     String
+  notes            String              @default("")
+  deleted_at       DateTime?
+  deleted_by       String?
+  created_by       String?
+  created_at       DateTime            @default(now())
+
+  lender  LoanLender? @relation(fields: [lender_id], references: [id], onDelete: SetNull)
+  account Account?    @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@index([owner_id])
+  @@index([date])
+  @@map("loans")
+}
+
+model AccountTransfer {
+  id                String   @id @default(uuid())
+  owner_id          String
+  date              DateTime @default(now()) @db.Date
+  from_account_id   String?
+  from_account_name String
+  to_account_id     String?
+  to_account_name   String
+  amount            Decimal  @default(0) @db.Decimal(15, 2)
+  notes             String   @default("")
+  created_by        String?
+  created_at        DateTime @default(now())
+
+  from_account Account? @relation("TransferFrom", fields: [from_account_id], references: [id], onDelete: Restrict)
+  to_account   Account? @relation("TransferTo", fields: [to_account_id], references: [id], onDelete: Restrict)
+
+  @@index([owner_id])
+  @@index([date])
+  @@map("account_transfers")
+}
+
+model Expense {
+  id            String    @id @default(uuid())
+  owner_id      String
+  date          DateTime  @default(now()) @db.Date
+  category_id   String?
+  category_name String
+  amount        Decimal   @default(0) @db.Decimal(15, 2)
+  account_id    String?
+  account_name  String
+  branch_id     String?
+  branch_name   String    @default("")
+  notes         String    @default("")
+  deleted_at    DateTime?
+  deleted_by    String?
+  created_by    String?
+  created_at    DateTime  @default(now())
+
+  category            ExpenseCategory?    @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  account             Account?            @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  salary_transactions SalaryTransaction[]
+
+  @@index([owner_id])
+  @@index([date])
+  @@index([category_id])
+  @@map("expenses")
+}
+
+model OtherIncome {
+  id            String     @id @default(uuid())
+  owner_id      String
+  date          DateTime   @default(now()) @db.Date
+  income_type   IncomeType @default(supplier)
+  supplier_id   String?
+  supplier_name String     @default("")
+  source_name   String     @default("")
+  amount        Decimal    @default(0) @db.Decimal(15, 2)
+  account_id    String?
+  account_name  String     @default("")
+  notes         String     @default("")
+  created_by    String?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  account  Account?  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+
+  @@index([owner_id])
+  @@index([date])
+  @@map("other_incomes")
+}

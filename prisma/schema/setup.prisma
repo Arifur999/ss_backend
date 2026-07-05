@@ -1,0 +1,142 @@
+// Business setup domain: settings, shareholders, accounts, suppliers,
+// customers, monthly targets, expense categories.
+
+model BusinessSettings {
+  id              String   @id @default(uuid())
+  owner_id        String
+  name_bn         String   @default("আমার ফার্নিচার")
+  name_en         String   @default("My Furniture")
+  phone           String   @default("")
+  email           String   @default("")
+  address         String   @default("")
+  website         String   @default("")
+  trade_license   String   @default("")
+  logo_url        String   @default("")
+  currency_symbol String   @default("৳")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@unique([owner_id])
+  @@map("business_settings")
+}
+
+model Shareholder {
+  id               String   @id @default(uuid())
+  owner_id         String
+  name             String
+  phone            String   @default("")
+  address          String   @default("")
+  share_percentage Decimal  @default(0) @db.Decimal(5, 2)
+  opening_amount   Decimal  @default(0) @db.Decimal(15, 2)
+  sort_order       Int      @default(0)
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+
+  investments        Investment[]
+  profit_withdrawals ProfitWithdrawal[]
+
+  @@index([owner_id])
+  @@map("shareholders")
+}
+
+model Account {
+  id              String      @id @default(uuid())
+  owner_id        String
+  name            String
+  type            AccountType
+  opening_balance Decimal     @default(0) @db.Decimal(15, 2)
+  is_active       Boolean     @default(true)
+  sort_order      Int         @default(0)
+  created_at      DateTime    @default(now())
+
+  investments        Investment[]
+  profit_withdrawals ProfitWithdrawal[]
+  loans              Loan[]
+  transfers_from     AccountTransfer[]   @relation("TransferFrom")
+  transfers_to       AccountTransfer[]   @relation("TransferTo")
+  expenses           Expense[]
+  supplier_payments  SupplierPayment[]
+  customer_payments  CustomerPayment[]
+  sale_payments      SalePayment[]
+  other_incomes      OtherIncome[]
+  salary_transactions SalaryTransaction[]
+
+  @@index([owner_id])
+  @@map("accounts")
+}
+
+model Supplier {
+  id           String   @id @default(uuid())
+  owner_id     String
+  name         String
+  company_name String   @default("")
+  person_name  String   @default("")
+  due_type     String   @default("dena")
+  phone        String   @default("")
+  email        String   @default("")
+  address      String   @default("")
+  opening_due  Decimal  @default(0) @db.Decimal(15, 2)
+  is_active    Boolean  @default(true)
+  deleted_at   DateTime?
+  deleted_by   String?
+  created_at   DateTime @default(now())
+
+  products          Product[]
+  purchases         Purchase[]
+  supplier_payments SupplierPayment[]
+  other_incomes     OtherIncome[]
+
+  @@index([owner_id])
+  @@map("suppliers")
+}
+
+model Customer {
+  id          String    @id @default(uuid())
+  owner_id    String
+  name        String
+  phone       String    @default("")
+  email       String    @default("")
+  address     String    @default("")
+  opening_due Decimal   @default(0) @db.Decimal(15, 2)
+  is_active   Boolean   @default(true)
+  deleted_at  DateTime?
+  deleted_by  String?
+  created_at  DateTime  @default(now())
+
+  sales             Sale[]
+  customer_payments CustomerPayment[]
+  sale_payments     SalePayment[]
+
+  @@index([owner_id])
+  @@map("customers")
+}
+
+model MonthlyTarget {
+  id            String   @id @default(uuid())
+  owner_id      String
+  year          Int
+  month         Int
+  sales_target  Decimal  @default(0) @db.Decimal(15, 2)
+  profit_target Decimal  @default(0) @db.Decimal(15, 2)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([owner_id, year, month])
+  @@map("monthly_targets")
+}
+
+model ExpenseCategory {
+  id             String   @id @default(uuid())
+  owner_id       String
+  name           String
+  color          String   @default("#6366f1")
+  monthly_budget Decimal  @default(0) @db.Decimal(15, 2)
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  expenses            Expense[]
+  salary_transactions SalaryTransaction[]
+
+  @@index([owner_id])
+  @@map("expense_categories")
+}

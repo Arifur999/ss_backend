@@ -1,0 +1,110 @@
+// Enum values intentionally kept lowercase to match the exact string values
+// the existing React frontend compares against (Supabase legacy data shape).
+
+enum Role {
+  super_admin
+  owner
+  manager
+  sales_staff
+  accountant
+}
+
+enum SubscriptionStatus {
+  pending
+  trial
+  active
+  expired
+  blocked
+}
+
+enum PlanType {
+  free_trial
+  monthly
+  yearly
+}
+
+enum PlanStatus {
+  active
+  expired
+  suspended
+}
+
+enum AccountType {
+  cash
+  bank
+  mfs
+  personal
+  other
+}
+
+enum ShippingStatus {
+  pending
+  partial
+  received
+}
+
+enum ReceiveCondition {
+  good
+  damaged
+  partial
+}
+
+enum InventoryChangeType {
+  purchase_in
+  sales_out
+  transfer_in
+  transfer_out
+  adjustment
+}
+
+enum SaleStatus {
+  draft
+  completed
+  cancelled
+}
+
+enum DeliveryStatus {
+  pending
+  partial
+  delivered
+}
+
+enum LoanType {
+  bank
+  personal
+}
+
+enum LoanTransactionType {
+  receive
+  payment
+}
+
+enum LenderType {
+  bank
+  person
+  boss
+}
+
+enum IncomeType {
+  supplier
+  other
+}
+
+enum BatchSourceType {
+  opening_stock
+  purchase_receive
+  adjustment
+}
+
+enum CostLayerSourceType {
+  fifo
+  preorder
+  manual
+}
+
+enum SubPaymentStatus {
+  paid
+  pending
+  failed
+  refunded
+}

@@ -1,0 +1,85 @@
+// Replaces Supabase auth.users + profiles (merged into one table).
+// Field names stay snake_case so API responses match what the frontend expects.
+
+model User {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  password   String
+  full_name  String    @default("")
+  role       Role      @default(owner)
+  phone      String    @default("")
+  branch_id  String?
+  is_active  Boolean   @default(true)
+  // For owners: owner_id = own id. For team members: points to their owner.
+  owner_id    String?
+  last_active DateTime?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  owner        User?  @relation("OwnerTeam", fields: [owner_id], references: [id], onDelete: Cascade)
+  team_members User[] @relation("OwnerTeam")
+
+  subscription          OwnerSubscription?
+  subscription_payments SubscriptionPayment[]
+
+  @@index([owner_id])
+  @@map("users")
+}
+
+model OwnerSubscription {
+  id             String             @id @default(uuid())
+  owner_id       String             @unique
+  business_name  String             @default("")
+  owner_email    String             @default("")
+  status         SubscriptionStatus @default(active)
+  plan           String             @default("Trial")
+  trial_start    DateTime           @default(now())
+  trial_end      DateTime
+  active_until   DateTime?
+  plan_type      PlanType           @default(free_trial)
+  plan_status    PlanStatus         @default(active)
+  start_date     DateTime           @default(now())
+  expiry_date    DateTime
+  blocked_reason String             @default("")
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([plan_status])
+  @@index([expiry_date])
+  @@map("owner_subscriptions")
+}
+
+// Real data behind the Super Admin "Payments" page (was demo data before).
+model SubscriptionPayment {
+  id         String           @id @default(uuid())
+  owner_id   String
+  invoice_no String           @default("")
+  plan_type  PlanType         @default(monthly)
+  method     String           @default("")
+  status     SubPaymentStatus @default(pending)
+  amount     Decimal          @default(0) @db.Decimal(15, 2)
+  date       DateTime         @default(now())
+  notes      String           @default("")
+  created_at DateTime         @default(now())
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@map("subscription_payments")
+}
+
+// Real data behind the Super Admin "Activity" page (was demo data before).
+model AdminActivity {
+  id          String   @id @default(uuid())
+  owner_id    String?
+  actor_email String   @default("")
+  action      String
+  detail      String   @default("")
+  created_at  DateTime @default(now())
+
+  @@index([owner_id])
+  @@index([created_at])
+  @@map("admin_activities")
+}

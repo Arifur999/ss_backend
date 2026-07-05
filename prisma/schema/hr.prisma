@@ -1,0 +1,71 @@
+// HR domain: employees, salary transactions, attendance.
+
+model Employee {
+  id          String    @id @default(uuid())
+  owner_id    String
+  name        String
+  phone       String?
+  address     String?
+  join_date   DateTime  @db.Date
+  resign_date DateTime? @db.Date
+  notes       String?
+  is_active   Boolean   @default(true)
+  deleted_at  DateTime?
+  deleted_by  String?
+  created_at  DateTime  @default(now())
+
+  salary_transactions SalaryTransaction[]
+  attendance          Attendance[]
+
+  @@index([owner_id])
+  @@map("employees")
+}
+
+model SalaryTransaction {
+  id            String    @id @default(uuid())
+  owner_id      String
+  employee_id   String
+  employee_name String    @default("")
+  date          DateTime  @db.Date
+  amount        Decimal   @default(0) @db.Decimal(12, 2)
+  bonus         Decimal   @default(0) @db.Decimal(12, 2)
+  payment_type  String    @default("Salary")
+  category_id   String?
+  category_name String    @default("")
+  period_from   DateTime? @db.Date
+  period_to     DateTime? @db.Date
+  account_id    String?
+  account_name  String    @default("")
+  expense_id    String?
+  notes         String?
+  created_by    String?
+  created_at    DateTime  @default(now())
+
+  employee Employee         @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  account  Account?         @relation(fields: [account_id], references: [id], onDelete: SetNull)
+  expense  Expense?         @relation(fields: [expense_id], references: [id], onDelete: SetNull)
+
+  @@index([owner_id])
+  @@index([employee_id])
+  @@map("salary_transactions")
+}
+
+model Attendance {
+  id          String   @id @default(uuid())
+  owner_id    String
+  employee_id String
+  date        DateTime @db.Date
+  present     Boolean  @default(true)
+  start_time  String?
+  end_time    String?
+  total_hours String?
+  notes       String?
+  created_at  DateTime @default(now())
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@index([employee_id, date])
+  @@map("attendance")
+}
