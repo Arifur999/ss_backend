@@ -16,6 +16,15 @@ interface ENVConfig {
     CLOUDINARY_CLOUD_NAME: string;
     CLOUDINARY_API_KEY: string;
     CLOUDINARY_API_SECRET: string;
+    BKASH: {
+        MODE: "sandbox" | "production";
+        BASE_URL: string;
+        APP_KEY: string;
+        APP_SECRET: string;
+        USERNAME: string;
+        PASSWORD: string;
+        CALLBACK_URL: string;
+    };
 }
 
 const requiredEnvVars = [
@@ -46,4 +55,23 @@ export const env: ENVConfig = {
     CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
+    // bKash credentials resolve by mode so the payment module never has to
+    // care whether it's talking to sandbox or production.
+    BKASH: (() => {
+        const mode = process.env.BKASH_MODE === "production" ? "production" : "sandbox";
+        const prefix = mode === "production" ? "BKASH_PROD" : "BKASH_SANDBOX";
+        return {
+            MODE: mode as "sandbox" | "production",
+            BASE_URL:
+                process.env[`${prefix}_BASE_URL`] ||
+                (mode === "production"
+                    ? "https://tokenized.pay.bka.sh/v1.2.0-beta"
+                    : "https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
+            APP_KEY: process.env[`${prefix}_APP_KEY`] || "",
+            APP_SECRET: process.env[`${prefix}_APP_SECRET`] || "",
+            USERNAME: process.env[`${prefix}_USERNAME`] || "",
+            PASSWORD: process.env[`${prefix}_PASSWORD`] || "",
+            CALLBACK_URL: process.env.BKASH_CALLBACK_URL || "http://localhost:5000/api/v1/payments/bkash/callback",
+        };
+    })(),
 };
