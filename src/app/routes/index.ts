@@ -4,9 +4,15 @@ import { AccountTransferRoutes } from "../module/accountTransfer/accountTransfer
 import { AuthRoutes } from "../module/auth/auth.route.js";
 import { BusinessSettingsRoutes } from "../module/businessSettings/businessSettings.route.js";
 import { CustomerRoutes } from "../module/customer/customer.route.js";
+import { ExpenseRoutes } from "../module/expense/expense.route.js";
 import { ExpenseCategoryRoutes } from "../module/expenseCategory/expenseCategory.route.js";
+import { InvestmentRoutes } from "../module/investment/investment.route.js";
+import { LoanRoutes } from "../module/loan/loan.route.js";
+import { LoanLenderRoutes } from "../module/loanLender/loanLender.route.js";
 import { MonthlyTargetRoutes } from "../module/monthlyTarget/monthlyTarget.route.js";
+import { OtherIncomeRoutes } from "../module/otherIncome/otherIncome.route.js";
 import { ProductRoutes } from "../module/product/product.route.js";
+import { ProfitWithdrawalRoutes } from "../module/profitWithdrawal/profitWithdrawal.route.js";
 import { ShareholderRoutes } from "../module/shareholder/shareholder.route.js";
 import { SubscriptionRoutes } from "../module/subscription/subscription.route.js";
 import { SuperAdminRoutes } from "../module/superAdmin/superAdmin.route.js";
@@ -28,5 +34,11 @@ router.use("/expense-categories", ExpenseCategoryRoutes);
 router.use("/suppliers", SupplierRoutes);
 router.use("/customers", CustomerRoutes);
 router.use("/products", ProductRoutes);
+router.use("/investments", InvestmentRoutes);
+router.use("/profit-withdrawals", ProfitWithdrawalRoutes);
+router.use("/loan-lenders", LoanLenderRoutes);
+router.use("/loans", LoanRoutes);
+router.use("/expenses", ExpenseRoutes);
+router.use("/other-incomes", OtherIncomeRoutes);
 
 export const indexRoute = router;
