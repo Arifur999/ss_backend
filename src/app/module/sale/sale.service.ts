@@ -367,11 +367,115 @@ const deleteDelivery = async (deliveryId: string, user: IRequestUser) => {
     });
 };
 
+// Partial header update (legacy account backfill, delivery status refresh).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const patchSale = async (id: string, payload: Record<string, any>, user: IRequestUser) => {
+    const existing = await prisma.sale.findFirst({
+        where: { id, owner_id: user.ownerId },
+    });
+
+    if (!existing) {
+        throw new AppError(status.NOT_FOUND, "Sale not found");
+    }
+
+    const allowedFields = [
+        "account_id", "account_name", "notes", "status", "delivery_status",
+        "customer_name", "customer_phone", "customer_address", "customer_id",
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+        if (field in payload) data[field] = payload[field];
+    }
+
+    return prisma.sale.update({
+        where: { id },
+        data,
+        include: saleInclude,
+    });
+};
+
+// Manual purchase-rate override for one sale item (old setManualCostForSaleItem):
+// releases existing layers, re-consumes batches at the manual unit cost.
+const setManualCost = async (itemId: string, unitCost: number, user: IRequestUser) => {
+    const item = await prisma.saleItem.findFirst({
+        where: { id: itemId, owner_id: user.ownerId },
+    });
+
+    if (!item) {
+        throw new AppError(status.NOT_FOUND, "Sale item not found");
+    }
+
+    return prisma.$transaction(async (tx) => {
+        await releaseFifoForSaleItem(tx, itemId);
+
+        let remaining = item.qty;
+
+        if (item.product_id) {
+            const batches = await tx.inventoryBatch.findMany({
+                where: { owner_id: user.ownerId, product_id: item.product_id, remaining_qty: { gt: 0 } },
+                orderBy: [{ received_date: "asc" }, { created_at: "asc" }],
+            });
+
+            for (const batch of batches) {
+                if (remaining <= 0) break;
+                const takeQty = Math.min(batch.remaining_qty, remaining);
+                if (takeQty <= 0) continue;
+
+                await tx.saleItemCostLayer.create({
+                    data: {
+                        owner_id: user.ownerId,
+                        sale_id: item.sale_id,
+                        sale_item_id: itemId,
+                        product_id: item.product_id,
+                        inventory_batch_id: batch.id,
+                        source_type: "manual",
+                        qty: takeQty,
+                        dp_price: unitCost,
+                        cost_amount: takeQty * unitCost,
+                        created_by: user.userId,
+                    },
+                });
+                remaining -= takeQty;
+
+                await tx.inventoryBatch.update({
+                    where: { id: batch.id },
+                    data: { remaining_qty: batch.remaining_qty - takeQty },
+                });
+            }
+        }
+
+        if (remaining > 0) {
+            await tx.saleItemCostLayer.create({
+                data: {
+                    owner_id: user.ownerId,
+                    sale_id: item.sale_id,
+                    sale_item_id: itemId,
+                    product_id: item.product_id,
+                    inventory_batch_id: null,
+                    source_type: "manual",
+                    qty: remaining,
+                    dp_price: unitCost,
+                    cost_amount: remaining * unitCost,
+                    created_by: user.userId,
+                },
+            });
+        }
+
+        return tx.saleItem.update({
+            where: { id: itemId },
+            data: { cost_price: unitCost },
+        });
+    });
+};
+
 export const SaleService = {
     getAllSales,
     createSale,
     updateSale,
+    patchSale,
     deleteSale,
     addDelivery,
     deleteDelivery,
+    setManualCost,
 };

@@ -3,7 +3,7 @@ import z from "zod";
 export const createProductZodSchema = z.object({
     product_code: z.string("Product code must be string").min(1, "Product code is required"),
     name: z.string("Name must be string").min(1, "Name is required"),
-    image_url: z.string("Image URL must be string").optional(),
+    image_url: z.string("Image URL must be string").nullable().optional().transform((value) => value ?? ""),
     supplier_id: z.uuid("Supplier id must be a valid UUID").nullable().optional(),
     selling_price: z.number("Selling price must be a number").nonnegative().optional(),
     cost_price: z.number("Cost price must be a number").nonnegative().optional(),

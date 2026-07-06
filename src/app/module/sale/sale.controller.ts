@@ -69,11 +69,37 @@ const deleteDelivery = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const patchSale = catchAsync(async (req: Request, res: Response) => {
+    const result = await SaleService.patchSale(req.params.id as string, req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Sale updated successfully",
+        data: result,
+    });
+});
+
+const setManualCost = catchAsync(async (req: Request, res: Response) => {
+    const result = await SaleService.setManualCost(
+        req.params.itemId as string,
+        Number(req.body.unit_cost ?? 0),
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Purchase rate updated successfully",
+        data: result,
+    });
+});
+
 export const SaleController = {
     getAllSales,
     createSale,
     updateSale,
+    patchSale,
     deleteSale,
     addDelivery,
     deleteDelivery,
+    setManualCost,
 };
