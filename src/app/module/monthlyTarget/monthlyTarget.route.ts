@@ -10,6 +10,7 @@ const router = Router();
 
 router.get("/", checkAuth(), checkSubscription, MonthlyTargetController.getAllTargets);
 router.put("/", checkAuth(Role.owner), checkSubscription, validateRequest(upsertMonthlyTargetZodSchema), MonthlyTargetController.upsertTarget);
+router.patch("/:id", checkAuth(Role.owner), checkSubscription, MonthlyTargetController.updateTargetById);
 router.delete("/:id", checkAuth(Role.owner), checkSubscription, MonthlyTargetController.deleteTarget);
 
 export const MonthlyTargetRoutes = router;

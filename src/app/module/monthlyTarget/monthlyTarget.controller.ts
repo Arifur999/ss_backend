@@ -25,6 +25,16 @@ const upsertTarget = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const updateTargetById = catchAsync(async (req: Request, res: Response) => {
+    const result = await MonthlyTargetService.updateTargetById(req.params.id as string, req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Monthly target updated successfully",
+        data: result,
+    });
+});
+
 const deleteTarget = catchAsync(async (req: Request, res: Response) => {
     const result = await MonthlyTargetService.deleteTarget(req.params.id as string, req.user as IRequestUser);
     sendResponse(res, {
@@ -38,5 +48,6 @@ const deleteTarget = catchAsync(async (req: Request, res: Response) => {
 export const MonthlyTargetController = {
     getAllTargets,
     upsertTarget,
+    updateTargetById,
     deleteTarget,
 };

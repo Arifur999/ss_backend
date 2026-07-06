@@ -29,6 +29,16 @@ const upsertAttendance = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const updateAttendance = catchAsync(async (req: Request, res: Response) => {
+    const result = await AttendanceService.updateAttendance(req.params.id as string, req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Attendance updated successfully",
+        data: result,
+    });
+});
+
 const deleteAttendance = catchAsync(async (req: Request, res: Response) => {
     const result = await AttendanceService.deleteAttendance(req.params.id as string, req.user as IRequestUser);
     sendResponse(res, {
@@ -42,5 +52,6 @@ const deleteAttendance = catchAsync(async (req: Request, res: Response) => {
 export const AttendanceController = {
     getAllAttendance,
     upsertAttendance,
+    updateAttendance,
     deleteAttendance,
 };

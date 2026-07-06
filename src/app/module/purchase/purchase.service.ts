@@ -291,6 +291,34 @@ const updateReceive = async (receiveId: string, newQty: number, user: IRequestUs
     });
 };
 
+// Edit a purchase item's descriptive/pricing fields (Purchase Ledger edit).
+// Quantities received/stock are managed by the receive endpoints, not here.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const updatePurchaseItem = async (itemId: string, payload: Record<string, any>, user: IRequestUser) => {
+    const item = await prisma.purchaseItem.findFirst({
+        where: { id: itemId, owner_id: user.ownerId },
+    });
+
+    if (!item) {
+        throw new AppError(status.NOT_FOUND, "Purchase item not found");
+    }
+
+    const allowedFields = [
+        "product_code", "product_name", "dp_price", "discount_pct",
+        "actual_dp", "qty", "total_amount", "sp_pct", "sp_amount",
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+        if (field in payload) data[field] = payload[field];
+    }
+
+    return prisma.purchaseItem.update({
+        where: { id: itemId },
+        data,
+    });
+};
+
 // Set a purchase item's total received qty directly (old edit-receive UI):
 // applies the delta to inventory + the latest FIFO batch, refreshes status.
 const setItemReceivedQty = async (itemId: string, newQty: number, user: IRequestUser) => {
@@ -430,5 +458,6 @@ export const PurchaseService = {
     updateReceive,
     deleteReceive,
     setItemReceivedQty,
+    updatePurchaseItem,
     deletePurchase,
 };

@@ -28,6 +28,29 @@ const upsertTarget = async (payload: IUpsertMonthlyTargetPayload, user: IRequest
     });
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const updateTargetById = async (id: string, payload: Record<string, any>, user: IRequestUser) => {
+    const existing = await prisma.monthlyTarget.findFirst({
+        where: { id, owner_id: user.ownerId },
+    });
+
+    if (!existing) {
+        throw new AppError(status.NOT_FOUND, "Monthly target not found");
+    }
+
+    const allowedFields = ["year", "month", "sales_target", "profit_target"];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+        if (field in payload) data[field] = payload[field];
+    }
+
+    return prisma.monthlyTarget.update({
+        where: { id },
+        data,
+    });
+};
+
 const deleteTarget = async (id: string, user: IRequestUser) => {
     const existing = await prisma.monthlyTarget.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -45,5 +68,6 @@ const deleteTarget = async (id: string, user: IRequestUser) => {
 export const MonthlyTargetService = {
     getAllTargets,
     upsertTarget,
+    updateTargetById,
     deleteTarget,
 };

@@ -10,6 +10,7 @@ const router = Router();
 
 router.get("/", checkAuth(), checkSubscription, AttendanceController.getAllAttendance);
 router.put("/", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(upsertAttendanceZodSchema), AttendanceController.upsertAttendance);
+router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, AttendanceController.updateAttendance);
 router.delete("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, AttendanceController.deleteAttendance);
 
 export const AttendanceRoutes = router;

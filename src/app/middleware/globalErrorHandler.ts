@@ -14,10 +14,20 @@ import {
 import { handleZodError } from "../errorHelpers/handleZodError.js";
 import { IError, IErrorResponse } from "../interfaces/error.interfaces.js";
 
+// Expected auth rejections (not-logged-in visitors hitting /me, expired
+// tokens) are routine - log them as one line instead of a full stack trace.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isExpectedAuthError = (err: any) =>
+    err instanceof AppError && (err.statusCode === status.UNAUTHORIZED || err.statusCode === status.FORBIDDEN);
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
 export const globalErrorHandler = async (err: any, req: Request, res: Response, next: NextFunction) => {
     if (env.NODE_ENV === "development") {
-        console.log("Error from Global Error Handler:", err);
+        if (isExpectedAuthError(err)) {
+            console.log(`[auth] ${req.method} ${req.originalUrl} -> ${err.statusCode}: ${err.message}`);
+        } else {
+            console.log("Error from Global Error Handler:", err);
+        }
     }
 
     let errorSource: IError[] = [];

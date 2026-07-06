@@ -65,6 +65,31 @@ const upsertAttendance = async (payload: IUpsertAttendancePayload, user: IReques
     });
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const updateAttendance = async (id: string, payload: Record<string, any>, user: IRequestUser) => {
+    const existing = await prisma.attendance.findFirst({
+        where: { id, owner_id: user.ownerId },
+    });
+
+    if (!existing) {
+        throw new AppError(status.NOT_FOUND, "Attendance record not found");
+    }
+
+    const allowedFields = ["present", "start_time", "end_time", "total_hours", "notes", "date"];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+        if (field in payload) {
+            data[field] = field === "date" && payload.date ? new Date(payload.date) : payload[field];
+        }
+    }
+
+    return prisma.attendance.update({
+        where: { id },
+        data,
+    });
+};
+
 const deleteAttendance = async (id: string, user: IRequestUser) => {
     const existing = await prisma.attendance.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -82,5 +107,6 @@ const deleteAttendance = async (id: string, user: IRequestUser) => {
 export const AttendanceService = {
     getAllAttendance,
     upsertAttendance,
+    updateAttendance,
     deleteAttendance,
 };
