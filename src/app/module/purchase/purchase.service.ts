@@ -291,6 +291,106 @@ const updateReceive = async (receiveId: string, newQty: number, user: IRequestUs
     });
 };
 
+// Set a purchase item's total received qty directly (old edit-receive UI):
+// applies the delta to inventory + the latest FIFO batch, refreshes status.
+const setItemReceivedQty = async (itemId: string, newQty: number, user: IRequestUser) => {
+    const item = await prisma.purchaseItem.findFirst({
+        where: { id: itemId, owner_id: user.ownerId },
+    });
+
+    if (!item) {
+        throw new AppError(status.NOT_FOUND, "Purchase item not found");
+    }
+
+    const delta = newQty - item.received_qty;
+
+    return prisma.$transaction(async (tx) => {
+        await tx.purchaseItem.update({
+            where: { id: itemId },
+            data: { received_qty: newQty },
+        });
+
+        if (delta !== 0 && item.product_id) {
+            await tx.inventory.upsert({
+                where: { owner_id_product_id: { owner_id: user.ownerId, product_id: item.product_id } },
+                create: {
+                    owner_id: user.ownerId,
+                    product_id: item.product_id,
+                    available_qty: delta,
+                    upcoming_qty: 0,
+                },
+                update: { available_qty: { increment: delta } },
+            });
+
+            const batch = await tx.inventoryBatch.findFirst({
+                where: { purchase_item_id: itemId },
+                orderBy: { created_at: "desc" },
+            });
+            if (batch) {
+                await tx.inventoryBatch.update({
+                    where: { id: batch.id },
+                    data: {
+                        received_qty: Math.max(0, batch.received_qty + delta),
+                        remaining_qty: Math.max(0, batch.remaining_qty + delta),
+                    },
+                });
+            }
+
+            await tx.inventoryHistory.create({
+                data: {
+                    owner_id: user.ownerId,
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    change_type: "adjustment",
+                    qty_change: delta,
+                    reference_id: item.purchase_id,
+                    reference_type: "purchase_receive_edit",
+                    notes: "Received quantity edited",
+                    created_by: user.userId,
+                },
+            });
+        }
+
+        const allItems = await tx.purchaseItem.findMany({
+            where: { purchase_id: item.purchase_id },
+            select: { qty: true, received_qty: true },
+        });
+        const allReceived = allItems.every((row) => row.received_qty >= row.qty);
+        const someReceived = allItems.some((row) => row.received_qty > 0);
+
+        return tx.purchase.update({
+            where: { id: item.purchase_id },
+            data: {
+                shipping_status: allReceived
+                    ? ShippingStatus.received
+                    : someReceived
+                        ? ShippingStatus.partial
+                        : ShippingStatus.pending,
+            },
+            include: purchaseInclude,
+        });
+    });
+};
+
+// Delete a receive record: reverse its quantity effects, then remove the row.
+const deleteReceive = async (receiveId: string, user: IRequestUser) => {
+    const receive = await prisma.purchaseReceive.findFirst({
+        where: { id: receiveId, owner_id: user.ownerId },
+    });
+
+    if (!receive) {
+        throw new AppError(status.NOT_FOUND, "Receive record not found");
+    }
+
+    await updateReceive(receiveId, 0, user);
+    await prisma.purchaseReceive.delete({ where: { id: receiveId } });
+
+    return prisma.purchase.findUniqueOrThrow({
+        where: { id: receive.purchase_id },
+        include: purchaseInclude,
+    });
+};
+
 const deletePurchase = async (id: string, user: IRequestUser, recycleMeta?: IRecycleMeta) => {
     const existing = await prisma.purchase.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -328,5 +428,7 @@ export const PurchaseService = {
     updatePurchase,
     receivePurchaseItem,
     updateReceive,
+    deleteReceive,
+    setItemReceivedQty,
     deletePurchase,
 };

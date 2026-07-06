@@ -16,6 +16,8 @@ const router = Router();
 router.get("/", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubscription, PurchaseController.getAllPurchases);
 router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(createPurchaseZodSchema), PurchaseController.createPurchase);
 router.patch("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updateReceiveZodSchema), PurchaseController.updateReceive);
+router.delete("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.deleteReceive);
+router.patch("/items/:itemId/received-qty", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.setItemReceivedQty);
 router.post("/:id/receive", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(receivePurchaseItemZodSchema), PurchaseController.receivePurchaseItem);
 router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updatePurchaseZodSchema), PurchaseController.updatePurchase);
 router.delete("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.deletePurchase);

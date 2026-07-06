@@ -12,5 +12,6 @@ router.get("/", checkAuth(), checkSubscription, InventoryController.getAllInvent
 router.get("/history", checkAuth(), checkSubscription, InventoryController.getInventoryHistory);
 router.get("/batches", checkAuth(), checkSubscription, InventoryController.getInventoryBatches);
 router.post("/adjust", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(adjustInventoryZodSchema), InventoryController.adjustInventory);
+router.patch("/dp-price", checkAuth(Role.owner, Role.manager), checkSubscription, InventoryController.setDpPrice);
 
 export const InventoryRoutes = router;

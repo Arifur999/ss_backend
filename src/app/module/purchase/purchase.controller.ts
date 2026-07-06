@@ -62,6 +62,30 @@ const updateReceive = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const setItemReceivedQty = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.setItemReceivedQty(
+        req.params.itemId as string,
+        Number(req.body.received_qty ?? 0),
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Received quantity updated successfully",
+        data: result,
+    });
+});
+
+const deleteReceive = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.deleteReceive(req.params.receiveId as string, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Receive deleted successfully",
+        data: result,
+    });
+});
+
 const deletePurchase = catchAsync(async (req: Request, res: Response) => {
     const result = await PurchaseService.deletePurchase(
         req.params.id as string,
@@ -82,5 +106,7 @@ export const PurchaseController = {
     updatePurchase,
     receivePurchaseItem,
     updateReceive,
+    deleteReceive,
+    setItemReceivedQty,
     deletePurchase,
 };

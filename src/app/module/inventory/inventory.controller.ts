@@ -51,9 +51,27 @@ const adjustInventory = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const setDpPrice = catchAsync(async (req: Request, res: Response) => {
+    const dpPrice = req.body.dp_price === null || req.body.dp_price === undefined
+        ? null
+        : Number(req.body.dp_price);
+    const result = await InventoryService.setDpPrice(
+        req.body.product_id,
+        dpPrice,
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "DP price updated successfully",
+        data: result,
+    });
+});
+
 export const InventoryController = {
     getAllInventory,
     getInventoryHistory,
     getInventoryBatches,
     adjustInventory,
+    setDpPrice,
 };

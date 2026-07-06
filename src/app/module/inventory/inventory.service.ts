@@ -104,9 +104,38 @@ const adjustInventory = async (payload: IAdjustInventoryPayload, user: IRequestU
     });
 };
 
+// Manual DP price override from the Inventory page: syncs the inventory row
+// and the product's opening stock batches.
+const setDpPrice = async (productId: string, dpPrice: number | null, user: IRequestUser) => {
+    const inventory = await prisma.inventory.findUnique({
+        where: { owner_id_product_id: { owner_id: user.ownerId, product_id: productId } },
+    });
+
+    if (!inventory) {
+        throw new AppError(status.NOT_FOUND, "Inventory row not found");
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const updated = await tx.inventory.update({
+            where: { id: inventory.id },
+            data: { dp_price: dpPrice },
+        });
+
+        if (dpPrice !== null) {
+            await tx.inventoryBatch.updateMany({
+                where: { owner_id: user.ownerId, product_id: productId, source_type: "opening_stock" },
+                data: { dp_price: dpPrice },
+            });
+        }
+
+        return updated;
+    });
+};
+
 export const InventoryService = {
     getAllInventory,
     getInventoryHistory,
     getInventoryBatches,
     adjustInventory,
+    setDpPrice,
 };
