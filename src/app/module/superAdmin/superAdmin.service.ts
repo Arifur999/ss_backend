@@ -265,6 +265,67 @@ const getDashboardStats = async () => {
     };
 };
 
+// Platform-wide report: total marketplace sales + subscription revenue,
+// with a 12-month trend for the Reports page chart.
+const getPlatformReports = async () => {
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
+    twelveMonthsAgo.setDate(1);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
+
+    const [salesTotals, paidPayments, monthlySales, monthlyRevenue] = await Promise.all([
+        prisma.sale.aggregate({
+            where: { deleted_at: null },
+            _sum: { net_amount: true },
+            _count: { _all: true },
+        }),
+        prisma.subscriptionPayment.aggregate({
+            where: { status: "paid" },
+            _sum: { amount: true },
+        }),
+        prisma.$queryRaw<{ month: string; total: number }[]>`
+            SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
+                   COALESCE(SUM(net_amount), 0)::float AS total
+            FROM sales
+            WHERE deleted_at IS NULL AND date >= ${twelveMonthsAgo}
+            GROUP BY 1
+            ORDER BY 1
+        `,
+        prisma.$queryRaw<{ month: string; total: number }[]>`
+            SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
+                   COALESCE(SUM(amount), 0)::float AS total
+            FROM subscription_payments
+            WHERE status = 'paid' AND date >= ${twelveMonthsAgo}
+            GROUP BY 1
+            ORDER BY 1
+        `,
+    ]);
+
+    // Build a continuous 12-month series so the chart never has gaps.
+    const salesByMonth = new Map(monthlySales.map((row) => [row.month, Number(row.total)]));
+    const revenueByMonth = new Map(monthlyRevenue.map((row) => [row.month, Number(row.total)]));
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const monthly = [];
+    const cursor = new Date(twelveMonthsAgo);
+    for (let index = 0; index < 12; index += 1) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        monthly.push({
+            month: monthNames[cursor.getMonth()],
+            sales: salesByMonth.get(key) ?? 0,
+            revenue: revenueByMonth.get(key) ?? 0,
+        });
+        cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return {
+        total_sales: salesTotals._sum.net_amount ?? 0,
+        total_orders: salesTotals._count._all,
+        subscription_revenue: paidPayments._sum.amount ?? 0,
+        monthly,
+    };
+};
+
 export const SuperAdminService = {
     getAllOwners,
     updateOwnerSubscription,
@@ -274,4 +335,5 @@ export const SuperAdminService = {
     updatePayment,
     getActivities,
     getDashboardStats,
+    getPlatformReports,
 };

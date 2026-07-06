@@ -15,5 +15,6 @@ router.get("/payments", checkAuth(Role.super_admin), SuperAdminController.getAll
 router.patch("/payments/:id", checkAuth(Role.super_admin), validateRequest(updateSubscriptionPaymentZodSchema), SuperAdminController.updatePayment);
 router.get("/activities", checkAuth(Role.super_admin), SuperAdminController.getActivities);
 router.get("/stats", checkAuth(Role.super_admin), SuperAdminController.getDashboardStats);
+router.get("/reports", checkAuth(Role.super_admin), SuperAdminController.getPlatformReports);
 
 export const SuperAdminRoutes = router;

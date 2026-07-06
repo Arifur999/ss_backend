@@ -97,6 +97,16 @@ const getDashboardStats = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getPlatformReports = catchAsync(async (req: Request, res: Response) => {
+    const result = await SuperAdminService.getPlatformReports();
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Platform reports retrieved successfully",
+        data: result,
+    });
+});
+
 export const SuperAdminController = {
     getAllOwners,
     updateOwnerSubscription,
@@ -106,4 +116,5 @@ export const SuperAdminController = {
     updatePayment,
     getActivities,
     getDashboardStats,
+    getPlatformReports,
 };
