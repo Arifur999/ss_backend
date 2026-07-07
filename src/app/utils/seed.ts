@@ -28,6 +28,8 @@ export const seedSuperAdmin = async () => {
             full_name: "Super Admin",
             role: Role.super_admin,
             is_active: true,
+            // The seeded super admin never goes through the OTP flow.
+            email_verified: true,
         },
     });
 

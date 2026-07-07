@@ -5,6 +5,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
+import { otpUtils } from "../../utils/otp.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
@@ -105,17 +106,73 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
         detail: `${payload.businessName} registered with a ${TRIAL_DAYS}-day free trial`,
     });
 
-    const tokenPayload = buildTokenPayload(result.user);
-    const accessToken = tokenUtils.getAccessToken(tokenPayload);
-    const refreshToken = tokenUtils.getRefreshToken(tokenPayload);
+    // SaaS email verification gate:
+    // registration does NOT log the user in. We send a 6-digit OTP to their
+    // inbox and the frontend shows the "enter code" screen. Cookies are only
+    // issued after /auth/verify-otp succeeds.
+    await otpUtils.issueOtp(email, payload.fullName);
 
     return {
-        user: { id: result.user.id, email: result.user.email },
-        profile: toProfile(result.user),
-        subscription: result.subscription,
-        accessToken,
-        refreshToken,
+        needsEmailConfirmation: true as const,
+        email,
     };
+};
+
+// Step 2 of registration (and of unverified logins): the user submits the
+// 6-digit code from their inbox. On success we flag the account verified and
+// issue the auth cookies - this IS the login.
+const verifyEmailOtp = async (email: string, code: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (!user) {
+        throw new AppError(status.NOT_FOUND, "No account found with this email");
+    }
+
+    // Throws a descriptive AppError on wrong/expired/over-attempted codes.
+    await otpUtils.verifyOtp(normalizedEmail, code);
+
+    // Mark the account verified (idempotent if it somehow already was).
+    const verifiedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: { email_verified: true },
+    });
+
+    let subscription = null;
+    if (verifiedUser.role !== Role.super_admin) {
+        subscription = await checkOwnerSubscriptionExpiry(verifiedUser.owner_id ?? verifiedUser.id);
+    }
+
+    // Verified -> issue tokens exactly like a successful login.
+    const tokenPayload = buildTokenPayload(verifiedUser);
+
+    return {
+        user: { id: verifiedUser.id, email: verifiedUser.email },
+        profile: toProfile(verifiedUser),
+        subscription,
+        accessToken: tokenUtils.getAccessToken(tokenPayload),
+        refreshToken: tokenUtils.getRefreshToken(tokenPayload),
+    };
+};
+
+// Re-send the verification code (60s cooldown enforced inside otpUtils).
+const resendVerificationOtp = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (!user) {
+        throw new AppError(status.NOT_FOUND, "No account found with this email");
+    }
+
+    if (user.email_verified) {
+        throw new AppError(status.BAD_REQUEST, "This email is already verified. Please log in.");
+    }
+
+    await otpUtils.resendOtp(normalizedEmail, user.full_name);
+
+    return { sent: true, email: normalizedEmail };
 };
 
 const loginUser = async (payload: ILoginPayload) => {
@@ -135,6 +192,25 @@ const loginUser = async (payload: ILoginPayload) => {
 
     if (!user.is_active) {
         throw new AppError(status.FORBIDDEN, "Your account has been deactivated. Please contact your owner or administrator.");
+    }
+
+    // Email verification gate at login:
+    // password was correct, but the email was never verified (e.g. the user
+    // closed the tab during registration). We send a fresh OTP and tell the
+    // frontend to show the verification screen instead of logging in.
+    if (!user.email_verified && user.role !== Role.super_admin) {
+        try {
+            await otpUtils.issueOtp(user.email, user.full_name);
+        } catch (error) {
+            // Cooldown or mail issues must not block the response - the
+            // frontend still needs to show the OTP screen with a resend button.
+            console.error("[otp] Could not auto-send login OTP:", error);
+        }
+
+        return {
+            needsEmailConfirmation: true as const,
+            email: user.email,
+        };
     }
 
     let subscription = null;
@@ -235,6 +311,8 @@ const touchOwnerActivity = async (requestUser: IRequestUser) => {
 export const AuthService = {
     registerOwner,
     loginUser,
+    verifyEmailOtp,
+    resendVerificationOtp,
     getMe,
     getNewTokens,
     touchOwnerActivity,

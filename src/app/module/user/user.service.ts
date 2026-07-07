@@ -47,6 +47,9 @@ const createTeamUser = async (payload: ICreateTeamUserPayload, user: IRequestUse
             role: payload.role,
             phone: payload.phone ?? "",
             owner_id: user.ownerId,
+            // Staff accounts are created by their owner who hands them the
+            // password directly - no OTP round-trip needed for them.
+            email_verified: true,
         },
     });
 

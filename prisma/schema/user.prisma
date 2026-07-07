@@ -10,6 +10,10 @@ model User {
   phone      String    @default("")
   branch_id  String?
   is_active  Boolean   @default(true)
+  // SaaS email verification: a user cannot use the app until they confirm
+  // the 6-digit OTP sent to their email at registration (or at login if
+  // they never verified). Team users created by an owner are auto-verified.
+  email_verified Boolean @default(false)
   // For owners: owner_id = own id. For team members: points to their owner.
   owner_id    String?
   last_active DateTime?
@@ -68,6 +72,25 @@ model SubscriptionPayment {
 
   @@index([owner_id])
   @@map("subscription_payments")
+}
+
+// One-time passwords for email verification.
+// - code_hash: we never store the raw OTP, only its bcrypt hash
+// - expires_at: OTP dies after 5 minutes
+// - attempts: brute-force guard, max 5 wrong tries per code
+// - last_sent_at: resend cooldown (60s) is measured from here
+model Otp {
+  id           String   @id @default(uuid())
+  email        String
+  code_hash    String
+  purpose      String   @default("verify_email")
+  expires_at   DateTime
+  attempts     Int      @default(0)
+  last_sent_at DateTime @default(now())
+  created_at   DateTime @default(now())
+
+  @@index([email, purpose])
+  @@map("otps")
 }
 
 // Server-backed recycle bin (was localStorage before). Pages push a snapshot

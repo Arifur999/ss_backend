@@ -10,25 +10,34 @@ import { jwtUtils } from "../../utils/jwt.js";
 import { AuthService } from "./auth.service.js";
 
 const registerOwner = catchAsync(async (req: Request, res: Response) => {
+    // Registration never sets cookies any more: the account exists but stays
+    // locked until the emailed OTP is verified (see verifyOtp below).
     const result = await AuthService.registerOwner(req.body);
-
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
 
     sendResponse(res, {
         success: true,
         httpStatus: status.CREATED,
-        message: "Owner registered successfully",
-        data: {
-            user: result.user,
-            profile: result.profile,
-            subscription: result.subscription,
-        },
+        message: "Verification code sent to your email",
+        data: result, // { needsEmailConfirmation: true, email }
     });
 });
 
 const loginUser = catchAsync(async (req: Request, res: Response) => {
     const result = await AuthService.loginUser(req.body);
 
+    // Unverified account: correct password, but the email OTP was never
+    // confirmed. A fresh code has been sent - no cookies are issued yet.
+    if ("needsEmailConfirmation" in result) {
+        sendResponse(res, {
+            success: true,
+            httpStatus: status.OK,
+            message: "Please verify your email - a new code has been sent",
+            data: result, // { needsEmailConfirmation: true, email }
+        });
+        return;
+    }
+
+    // Fully verified account: issue the httpOnly auth cookie pair.
     cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
 
     sendResponse(res, {
@@ -40,6 +49,37 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
             profile: result.profile,
             subscription: result.subscription,
         },
+    });
+});
+
+// Final step of registration / unverified login: the submitted OTP is checked
+// and, on success, the account is marked verified and logged in (cookies set).
+const verifyOtp = catchAsync(async (req: Request, res: Response) => {
+    const result = await AuthService.verifyEmailOtp(req.body.email, req.body.otp);
+
+    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Email verified successfully",
+        data: {
+            user: result.user,
+            profile: result.profile,
+            subscription: result.subscription,
+        },
+    });
+});
+
+// "Didn't get the code?" button - rate limited to once per 60 seconds.
+const resendOtp = catchAsync(async (req: Request, res: Response) => {
+    const result = await AuthService.resendVerificationOtp(req.body.email);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "A new verification code has been sent",
+        data: result,
     });
 });
 
@@ -64,11 +104,16 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
     const verified = jwtUtils.verifyToken(token, env.REFRESH_TOKEN_SECRET);
 
     if (!verified.success) {
+        // Cookie hygiene: a dead/tampered refresh token is useless - clear
+        // both cookies so the browser stops retrying with garbage and the
+        // frontend lands cleanly on the login page.
+        cookieUtils.clearAuthCookies(res);
         throw new AppError(status.UNAUTHORIZED, "Invalid refresh token");
     }
 
     const result = await AuthService.getNewTokens(verified.decoded as unknown as IRequestUser);
 
+    // Token rotation: every refresh issues a brand-new access+refresh pair.
     cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
 
     sendResponse(res, {
@@ -104,6 +149,8 @@ const touchActivity = catchAsync(async (req: Request, res: Response) => {
 export const AuthController = {
     registerOwner,
     loginUser,
+    verifyOtp,
+    resendOtp,
     getMe,
     refreshToken,
     logoutUser,

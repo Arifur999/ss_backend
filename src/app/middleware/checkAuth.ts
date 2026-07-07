@@ -39,6 +39,13 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
             throw new AppError(status.UNAUTHORIZED, "Unauthorized access! User is not active.");
         }
 
+        // Defense in depth: cookies are only issued after OTP verification,
+        // but if a token somehow exists for an unverified account (e.g. the
+        // account was un-verified by an admin), block it here too.
+        if (!user.email_verified && user.role !== Role.super_admin) {
+            throw new AppError(status.UNAUTHORIZED, "Unauthorized access! Email is not verified.");
+        }
+
         if (authRoles.length > 0 && !authRoles.includes(user.role)) {
             throw new AppError(status.FORBIDDEN, "Forbidden access! You do not have permission to access this resource.");
         }

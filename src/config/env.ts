@@ -16,6 +16,16 @@ interface ENVConfig {
     CLOUDINARY_CLOUD_NAME: string;
     CLOUDINARY_API_KEY: string;
     CLOUDINARY_API_SECRET: string;
+    // SMTP credentials for sending OTP / notification emails.
+    // Leave empty in development: OTP codes are then printed to the server
+    // console instead of being emailed, so the flow stays testable.
+    EMAIL_SENDER: {
+        SMTP_HOST: string;
+        SMTP_PORT: string;
+        SMTP_USER: string;
+        SMTP_PASS: string;
+        SMTP_FROM: string;
+    };
     BKASH: {
         MODE: "sandbox" | "production";
         BASE_URL: string;
@@ -55,6 +65,13 @@ export const env: ENVConfig = {
     CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
+    EMAIL_SENDER: {
+        SMTP_HOST: process.env.EMAIL_SENDER_SMTP_HOST || "smtp.gmail.com",
+        SMTP_PORT: process.env.EMAIL_SENDER_SMTP_PORT || "465",
+        SMTP_USER: process.env.EMAIL_SENDER_SMTP_USER || "",
+        SMTP_PASS: process.env.EMAIL_SENDER_SMTP_PASS || "",
+        SMTP_FROM: process.env.EMAIL_SENDER_SMTP_FROM || process.env.EMAIL_SENDER_SMTP_USER || "",
+    },
     // bKash credentials resolve by mode so the payment module never has to
     // care whether it's talking to sandbox or production.
     BKASH: (() => {

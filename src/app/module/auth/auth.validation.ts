@@ -13,3 +13,13 @@ export const loginZodSchema = z.object({
     email: z.email("Email must be a valid email address"),
     password: z.string("Password must be string").min(1, "Password is required"),
 });
+
+// The 6-digit code the user copies from their inbox.
+export const verifyOtpZodSchema = z.object({
+    email: z.email("Email must be a valid email address"),
+    otp: z.string("OTP must be string").length(6, "OTP must be exactly 6 digits"),
+});
+
+export const resendOtpZodSchema = z.object({
+    email: z.email("Email must be a valid email address"),
+});
