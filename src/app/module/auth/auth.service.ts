@@ -10,9 +10,6 @@ import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
 
-export const SUBSCRIPTION_EXPIRED_LOGIN_MESSAGE =
-    "Your subscription has expired! Please purchase a dynamic renewal plan or request an administrator to grant a free trial extension to regain system access.";
-
 const TRIAL_DAYS = 7;
 
 const addDays = (date: Date, days: number) => {
@@ -215,26 +212,16 @@ const loginUser = async (payload: ILoginPayload) => {
 
     let subscription = null;
 
+    // Login only checks credentials - it must never block on subscription
+    // status. Pending / expired / suspended / blocked owners all sign in
+    // successfully here; ProtectedRoute on the frontend reads `subscription`
+    // and shows the matching lock screen (for "expired" specifically, that
+    // screen sends the owner straight to the payment page). Blocking login
+    // here instead would strand an expired owner with no way to ever reach
+    // checkout and pay again.
     if (user.role !== Role.super_admin) {
         const ownerId = user.owner_id ?? user.id;
         subscription = await checkOwnerSubscriptionExpiry(ownerId);
-
-        // Login gate: expired / suspended / blocked accounts cannot sign in.
-        // (pending is allowed in - the app shows a lock screen instead.)
-        if (subscription) {
-            const planExpired =
-                subscription.plan_status === PlanStatus.expired ||
-                subscription.plan_status === PlanStatus.suspended ||
-                (subscription.plan_status === PlanStatus.active &&
-                    subscription.expiry_date.getTime() <= Date.now());
-            const statusBlocked =
-                subscription.status === SubscriptionStatus.expired ||
-                subscription.status === SubscriptionStatus.blocked;
-
-            if (planExpired || statusBlocked) {
-                throw new AppError(status.FORBIDDEN, SUBSCRIPTION_EXPIRED_LOGIN_MESSAGE);
-            }
-        }
     }
 
     if (user.role === Role.owner) {
