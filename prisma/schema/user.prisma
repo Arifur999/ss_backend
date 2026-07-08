@@ -98,7 +98,11 @@ model PlatformSetting {
   // Manual bKash payment details shown on the checkout page.
   bkash_number String  @default("")
   bkash_qr_url String  @default("")
-  yearly_price Decimal @default(5750) @db.Decimal(15, 2)
+  yearly_price Decimal @default(5780) @db.Decimal(15, 2)
+  // Struck-through "regular price" shown next to yearly_price on the plans
+  // page so the discount is visible (e.g. ~7188 crossed out -> 5780). Purely
+  // a marketing display value - never charged, never used in payment math.
+  yearly_original_price Decimal @default(7188) @db.Decimal(15, 2)
 
   // Expiry reminder email template. Supports {{name}}, {{business_name}},
   // {{days_left}}, {{expiry_date}}, {{plan}} placeholders - see

@@ -27,6 +27,7 @@ const getPaymentInfo = async () => {
         bkash_number: settings.bkash_number,
         bkash_qr_url: settings.bkash_qr_url,
         yearly_price: settings.yearly_price,
+        yearly_original_price: settings.yearly_original_price,
     };
 };
 

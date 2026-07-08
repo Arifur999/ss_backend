@@ -7,6 +7,7 @@ export const updatePlatformSettingsZodSchema = z.object({
     bkash_number: z.string("bKash number must be string").optional(),
     bkash_qr_url: z.string("QR URL must be string").optional(),
     yearly_price: z.number("Yearly price must be a number").positive("Yearly price must be positive").optional(),
+    yearly_original_price: z.number("Original price must be a number").positive("Original price must be positive").optional(),
     reminder_subject: z.string("Reminder subject must be string").min(1, "Subject cannot be empty").optional(),
     reminder_body: z.string("Reminder body must be string").min(1, "Body cannot be empty").optional(),
 });
