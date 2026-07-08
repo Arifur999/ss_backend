@@ -15,6 +15,7 @@ import { LoanRoutes } from "../module/loan/loan.route.js";
 import { LoanLenderRoutes } from "../module/loanLender/loanLender.route.js";
 import { MonthlyTargetRoutes } from "../module/monthlyTarget/monthlyTarget.route.js";
 import { OtherIncomeRoutes } from "../module/otherIncome/otherIncome.route.js";
+import { PlatformSettingsRoutes } from "../module/platformSettings/platformSettings.route.js";
 import { ProductRoutes } from "../module/product/product.route.js";
 import { ProfitWithdrawalRoutes } from "../module/profitWithdrawal/profitWithdrawal.route.js";
 import { PurchaseRoutes } from "../module/purchase/purchase.route.js";
@@ -62,5 +63,6 @@ router.use("/salary-transactions", SalaryTransactionRoutes);
 router.use("/attendance", AttendanceRoutes);
 router.use("/recycle-bin", RecycleBinRoutes);
 router.use("/uploads", UploadRoutes);
+router.use("/platform-settings", PlatformSettingsRoutes);
 
 export const indexRoute = router;

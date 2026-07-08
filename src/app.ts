@@ -6,6 +6,7 @@ import { prisma } from "./app/lib/prisma.js";
 import { globalErrorHandler } from "./app/middleware/globalErrorHandler.js";
 import notFound from "./app/middleware/notFound.js";
 import { indexRoute } from "./app/routes/index.js";
+import { sendExpiryReminders } from "./app/utils/subscriptionReminders.js";
 import { env } from "./config/env.js";
 
 const app: Application = express();
@@ -30,6 +31,18 @@ cron.schedule("0 * * * *", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
         console.error("Subscription expiry sweep failed:", error.message);
+    }
+});
+
+// Daily at 9am: email owners whose subscription expires in exactly 15, 7 or
+// 3 days, using the super-admin editable template (see platformSettings
+// module). sendExpiryReminders() dedupes internally via ReminderLog.
+cron.schedule("0 9 * * *", async () => {
+    try {
+        await sendExpiryReminders();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+        console.error("Expiry reminder cron failed:", error.message);
     }
 });
 

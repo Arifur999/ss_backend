@@ -56,22 +56,64 @@ model OwnerSubscription {
 }
 
 // Real data behind the Super Admin "Payments" page (was demo data before).
+// sender_number/trx_id are filled when the owner submits a manual bKash
+// payment (see subscription.service.ts submitManualPayment) - a super admin
+// reviews these two fields against their own bKash statement before
+// approving.
 model SubscriptionPayment {
-  id         String           @id @default(uuid())
-  owner_id   String
-  invoice_no String           @default("")
-  plan_type  PlanType         @default(monthly)
-  method     String           @default("")
-  status     SubPaymentStatus @default(pending)
-  amount     Decimal          @default(0) @db.Decimal(15, 2)
-  date       DateTime         @default(now())
-  notes      String           @default("")
-  created_at DateTime         @default(now())
+  id            String           @id @default(uuid())
+  owner_id      String
+  invoice_no    String           @default("")
+  plan_type     PlanType         @default(monthly)
+  method        String           @default("")
+  status        SubPaymentStatus @default(pending)
+  amount        Decimal          @default(0) @db.Decimal(15, 2)
+  sender_number String           @default("")
+  trx_id        String           @default("")
+  date          DateTime         @default(now())
+  notes         String           @default("")
+  created_at    DateTime         @default(now())
 
   owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
 
   @@index([owner_id])
   @@map("subscription_payments")
+}
+
+// Singleton row (there is only ever one) holding everything the super admin
+// can edit about payment collection: where customers should send the manual
+// bKash payment, and the wording of expiry-reminder emails.
+model PlatformSetting {
+  id     String @id @default(uuid())
+
+  // Manual bKash payment details shown on the checkout page.
+  bkash_number String  @default("")
+  bkash_qr_url String  @default("")
+  yearly_price Decimal @default(5750) @db.Decimal(15, 2)
+
+  // Expiry reminder email template. Supports {{name}}, {{business_name}},
+  // {{days_left}}, {{expiry_date}}, {{plan}} placeholders - see
+  // app/utils/email.ts renderTemplate().
+  reminder_subject String @default("Your subscription expires in {{days_left}} days")
+  reminder_body    String @default("") @db.Text
+
+  updated_at DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+// Tracks which expiry-reminder emails have already gone out so the daily
+// cron never double-sends. One row per (owner, days_before, expiry_date) -
+// the expiry_date component means a renewal naturally resets the reminders.
+model ReminderLog {
+  id          String   @id @default(uuid())
+  owner_id    String
+  days_before Int
+  expiry_date DateTime
+  sent_at     DateTime @default(now())
+
+  @@unique([owner_id, days_before, expiry_date])
+  @@map("reminder_logs")
 }
 
 // One-time passwords for email verification.

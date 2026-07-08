@@ -109,3 +109,43 @@ export const sendOtpEmail = async (to: string, name: string, otp: string): Promi
         return false;
     }
 };
+
+// ---------------------------------------------------------------------------
+// Generic templated email (used for subscription expiry reminders and the
+// super admin's "send test email" preview button).
+//
+// Templates are plain strings with {{placeholder}} tokens - super admins
+// edit them as raw HTML in Settings, so we deliberately do NOT run a full
+// templating engine here, just a straightforward find-and-replace.
+// ---------------------------------------------------------------------------
+
+// Replace every {{key}} occurrence in the template with vars[key].
+// Unknown placeholders are left as-is rather than throwing, so a typo in the
+// admin's template never crashes the reminder cron.
+export const renderTemplate = (template: string, vars: Record<string, string | number>): string => {
+    return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (match, key: string) => {
+        return key in vars ? String(vars[key]) : match;
+    });
+};
+
+// Send an already-rendered HTML email. Same OAuth2 -> SMTP -> console
+// fallback chain as sendOtpEmail, but with a caller-supplied subject/body.
+export const sendTemplatedEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
+    if (!isOAuthConfigured() && !isSmtpConfigured()) {
+        console.log(`[mail] Email not configured - would have sent "${subject}" to ${to}:\n${html}`);
+        return false;
+    }
+
+    try {
+        await getTransporter().sendMail({
+            from: `"Furniture Business" <${fromAddress()}>`,
+            to,
+            subject,
+            html,
+        });
+        return true;
+    } catch (error) {
+        console.error(`[mail] Failed to email ${to}:`, error);
+        return false;
+    }
+};

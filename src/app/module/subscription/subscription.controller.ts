@@ -25,7 +25,18 @@ const choosePlan = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const submitManualPayment = catchAsync(async (req: Request, res: Response) => {
+    const result = await SubscriptionService.submitManualPayment(req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.CREATED,
+        message: "Payment submitted successfully - awaiting approval",
+        data: result,
+    });
+});
+
 export const SubscriptionController = {
     getMySubscription,
     choosePlan,
+    submitManualPayment,
 };
