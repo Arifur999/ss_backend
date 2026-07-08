@@ -26,6 +26,14 @@ interface ENVConfig {
         SMTP_PASS: string;
         SMTP_FROM: string;
     };
+    // Google OAuth2 for Gmail sending. When MAIL_USER + CLIENT_ID/SECRET +
+    // REFRESH_TOKEN are all present, this takes priority over SMTP password.
+    GOOGLE: {
+        MAIL_USER: string;
+        CLIENT_ID: string;
+        CLIENT_SECRET: string;
+        REFRESH_TOKEN: string;
+    };
     BKASH: {
         MODE: "sandbox" | "production";
         BASE_URL: string;
@@ -71,6 +79,12 @@ export const env: ENVConfig = {
         SMTP_USER: process.env.EMAIL_SENDER_SMTP_USER || "",
         SMTP_PASS: process.env.EMAIL_SENDER_SMTP_PASS || "",
         SMTP_FROM: process.env.EMAIL_SENDER_SMTP_FROM || process.env.EMAIL_SENDER_SMTP_USER || "",
+    },
+    GOOGLE: {
+        MAIL_USER: process.env.GOOGLE_MAIL_USER || "",
+        CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
+        CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
+        REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN || "",
     },
     // bKash credentials resolve by mode so the payment module never has to
     // care whether it's talking to sandbox or production.
