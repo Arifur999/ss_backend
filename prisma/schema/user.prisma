@@ -45,6 +45,15 @@ model OwnerSubscription {
   start_date     DateTime           @default(now())
   expiry_date    DateTime
   blocked_reason String             @default("")
+  // Every owner gets a free trial automatically at registration, so this is
+  // set true from day one. It only ever blocks self-service: choosePlan()
+  // refuses to grant another free_trial once this is true, forever - the
+  // super admin's separate "grant trial extension" action is the only way
+  // back in after that (see SuperAdminService.grantTrialExtension, which
+  // does not touch this flag). Defaulting new rows to true (not false)
+  // matters for the backfill: every pre-existing owner has already had
+  // their one registration trial.
+  trial_used     Boolean            @default(true)
   created_at     DateTime           @default(now())
   updated_at     DateTime           @updatedAt
 

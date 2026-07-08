@@ -90,6 +90,10 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
                 plan_status: PlanStatus.active,
                 start_date: registeredAt,
                 expiry_date: addDays(registeredAt, TRIAL_DAYS),
+                // This registration IS the owner's one free trial - mark it
+                // used immediately so choosePlan() can never grant a second
+                // one via self-service once this one expires.
+                trial_used: true,
             },
         });
 

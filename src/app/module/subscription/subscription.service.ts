@@ -41,6 +41,19 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
 
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
+
+    // Every owner already got a free trial automatically at registration
+    // (trial_used is set true right there), so this only ever fires when
+    // someone tries to self-service a second trial after the first one
+    // expired. That's only allowed via the super admin's dedicated "grant
+    // trial extension" action, which does not go through choosePlan at all.
+    if (isTrial && existing.trial_used) {
+        throw new AppError(
+            status.FORBIDDEN,
+            "You've already used your free trial. Please choose the yearly plan, or ask your super admin to grant a trial extension."
+        );
+    }
+
     const expiry = isTrial ? addDays(now, 7) : addMonths(now, 12);
 
     const subscription = await prisma.ownerSubscription.update({
@@ -58,6 +71,7 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
             start_date: now,
             expiry_date: expiry,
             blocked_reason: "",
+            trial_used: isTrial ? true : existing.trial_used,
         },
     });
 
