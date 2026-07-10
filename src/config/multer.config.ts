@@ -10,7 +10,7 @@ const storage = new CloudinaryStorage({
             const fileName = file.originalname
                 .toLowerCase()
                 .replace(/\.[^/.]+$/, "")
-                .replace(/[^a-z0-9\-]/g, "-")
+                .replace(/[^a-z0-9-]/g, "-")
                 .replace(/-+/g, "-");
             const uniqueName = `${Math.random().toString(36).slice(2)}-${Date.now()}-${fileName}`;
             return `furniture-business/${uniqueName}`;

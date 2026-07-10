@@ -53,6 +53,10 @@ const insertSaleItems = async (
     user: IRequestUser
 ) => {
     for (const item of items) {
+        // manual_cost is destructured out on purpose so it never reaches the
+        // create() spread below - the sale item's cost is always FIFO/costed
+        // server-side, never taken directly from client input.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { manual_cost, delivered_qty, ...itemData } = item;
 
         const saleItem = await tx.saleItem.create({

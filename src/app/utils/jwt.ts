@@ -1,4 +1,3 @@
-/* eslint-disable no-useless-catch */
 import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
 
 const createToken = (payload: JwtPayload, secret: string, { expiresIn }: SignOptions) => {
