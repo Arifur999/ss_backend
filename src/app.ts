@@ -46,8 +46,19 @@ cron.schedule("0 9 * * *", async () => {
     }
 });
 
+// FRONTEND_URL may be a single origin or a comma-separated list (e.g. both
+// the www and bare-domain variants of a shared-hosting site: FRONTEND_URL=
+// https://example.com,https://www.example.com). Frontend and backend now
+// commonly live on entirely different hosts/domains (Railway + Hostinger),
+// so this can no longer assume same-origin like the nginx-proxied setup did.
+const allowedOrigins = [
+    ...env.FRONTEND_URL.split(",").map((url) => url.trim()).filter(Boolean),
+    "http://localhost:5173",
+    "http://localhost:3000",
+];
+
 app.use(cors({
-    origin: [env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],

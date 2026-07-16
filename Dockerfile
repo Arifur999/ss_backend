@@ -27,4 +27,7 @@ COPY --from=build /app/dist ./dist
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 EXPOSE 5000
-CMD ["node", "dist/server.js"]
+# `prisma migrate deploy` runs on every container start, before the server -
+# it's idempotent (a no-op if nothing's pending), and platforms like Railway
+# don't offer the SSH access the VPS plan used to run migrations manually.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
