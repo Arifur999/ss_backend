@@ -2,16 +2,24 @@ import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
 
 // ---------------------------------------------------------------------------
-// Email sender (nodemailer).
+// Email sender.
 //
 // Credential resolution order:
-//  1. Google OAuth2  - GOOGLE_MAIL_USER + CLIENT_ID/SECRET + REFRESH_TOKEN
+//  1. Resend (HTTPS API, api.resend.com) - RESEND_API_KEY. Preferred: it's a
+//     plain HTTPS call, so it works on hosts that block outbound SMTP ports
+//     to fight spam (Railway does this - direct SMTP to Gmail from there
+//     hangs until ETIMEDOUT/ENETUNREACH, well past any reasonable request
+//     timeout). SMTP/OAuth2 below still work fine for local dev or hosts
+//     that do allow outbound SMTP.
+//  2. Google OAuth2  - GOOGLE_MAIL_USER + CLIENT_ID/SECRET + REFRESH_TOKEN
 //                      (nodemailer exchanges the refresh token for access
 //                      tokens automatically on every send)
-//  2. SMTP password  - EMAIL_SENDER_SMTP_USER + PASS (e.g. Gmail App Password)
-//  3. Console        - nothing configured: the OTP is printed to the server
+//  3. SMTP password  - EMAIL_SENDER_SMTP_USER + PASS (e.g. Gmail App Password)
+//  4. Console        - nothing configured: the OTP is printed to the server
 //                      console so the flow stays testable in development
 // ---------------------------------------------------------------------------
+
+const isResendConfigured = () => Boolean(env.RESEND.API_KEY);
 
 // OAuth2 is "configured" only when every required piece exists.
 const isOAuthConfigured = () =>
@@ -65,6 +73,66 @@ const getTransporter = () => {
 // set is active.
 const fromAddress = () =>
     isOAuthConfigured() ? env.GOOGLE.MAIL_USER : env.EMAIL_SENDER.SMTP_FROM;
+
+// Plain HTTPS call to Resend's API - no SDK needed, Node 22's built-in fetch
+// is enough. Throws on any non-2xx response so the caller's try/catch can
+// fall through to the next provider.
+const sendViaResend = async (to: string, subject: string, html: string): Promise<void> => {
+    const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${env.RESEND.API_KEY}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            from: `Furniture Business Management <${env.RESEND.FROM_EMAIL}>`,
+            to,
+            subject,
+            html,
+        }),
+    });
+
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`Resend API responded ${response.status}: ${body}`);
+    }
+};
+
+// Single delivery path shared by sendOtpEmail and sendTemplatedEmail: tries
+// Resend first, falls back to nodemailer (OAuth2/SMTP) if Resend isn't
+// configured or fails, and returns false (never throws) if nothing is set up
+// or every configured provider failed - callers decide what to do then
+// (sendOtpEmail logs the raw code so the user can still be helped manually).
+const deliverEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
+    if (isResendConfigured()) {
+        try {
+            await sendViaResend(to, subject, html);
+            return true;
+        } catch (error) {
+            console.error(`[mail] Resend failed for ${to}:`, error);
+        }
+    }
+
+    if (isOAuthConfigured() || isSmtpConfigured()) {
+        try {
+            await getTransporter().sendMail({
+                from: `"Furniture Business Management" <${fromAddress()}>`,
+                to,
+                subject,
+                html,
+            });
+            return true;
+        } catch (error) {
+            console.error(`[mail] SMTP/OAuth2 failed for ${to}:`, error);
+        }
+    }
+
+    if (!isResendConfigured() && !isOAuthConfigured() && !isSmtpConfigured()) {
+        console.log(`[mail] No email provider configured - skipping send to ${to}`);
+    }
+
+    return false;
+};
 
 // A user's full_name ends up interpolated straight into HTML below. It's
 // always mailed back to that same user (never to anyone else), so there's no
@@ -136,29 +204,15 @@ const otpEmailHtml = (name: string, otp: string) => `
 // Send the OTP mail. Returns true when a real email was sent, false when the
 // console fallback was used - callers can surface that difference if needed.
 export const sendOtpEmail = async (to: string, name: string, otp: string): Promise<boolean> => {
-    // Development fallback: nothing configured -> print the code and move on.
-    if (!isOAuthConfigured() && !isSmtpConfigured()) {
-        console.log(`[otp] Email not configured - OTP for ${to} is: ${otp}`);
-        return false;
-    }
-
-    try {
-        await getTransporter().sendMail({
-            from: `"Furniture Business Management" <${fromAddress()}>`,
-            to,
-            // Code in the subject too - most inboxes preview enough of the
-            // subject line to verify without even opening the email.
-            subject: `${otp} is your verification code`,
-            html: otpEmailHtml(name, otp),
-        });
-        return true;
-    } catch (error) {
-        // Never let a mail-provider hiccup take the whole request down;
-        // log the code so the user can still be helped manually.
-        console.error(`[otp] Failed to email ${to}:`, error);
+    // Code in the subject too - most inboxes preview enough of the subject
+    // line to verify without even opening the email.
+    const sent = await deliverEmail(to, `${otp} is your verification code`, otpEmailHtml(name, otp));
+    if (!sent) {
+        // Every configured provider failed (or none is configured) - log the
+        // code so the user can still be helped manually.
         console.log(`[otp] Fallback - OTP for ${to} is: ${otp}`);
-        return false;
     }
+    return sent;
 };
 
 // ---------------------------------------------------------------------------
@@ -179,24 +233,13 @@ export const renderTemplate = (template: string, vars: Record<string, string | n
     });
 };
 
-// Send an already-rendered HTML email. Same OAuth2 -> SMTP -> console
-// fallback chain as sendOtpEmail, but with a caller-supplied subject/body.
+// Send an already-rendered HTML email. Same Resend -> OAuth2 -> SMTP ->
+// console fallback chain as sendOtpEmail, but with a caller-supplied
+// subject/body.
 export const sendTemplatedEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
-    if (!isOAuthConfigured() && !isSmtpConfigured()) {
-        console.log(`[mail] Email not configured - would have sent "${subject}" to ${to}:\n${html}`);
-        return false;
+    const sent = await deliverEmail(to, subject, html);
+    if (!sent) {
+        console.log(`[mail] Could not deliver "${subject}" to ${to}`);
     }
-
-    try {
-        await getTransporter().sendMail({
-            from: `"Furniture Business Management" <${fromAddress()}>`,
-            to,
-            subject,
-            html,
-        });
-        return true;
-    } catch (error) {
-        console.error(`[mail] Failed to email ${to}:`, error);
-        return false;
-    }
+    return sent;
 };

@@ -49,7 +49,11 @@ export const issueOtp = async (email: string, name: string, purpose = OTP_PURPOS
         }),
     ]);
 
-    await sendOtpEmail(email, name, code);
+    // Fire-and-forget: a slow/blocked mail provider must never hang the
+    // registration/login/resend request that triggered this. sendOtpEmail()
+    // catches every error internally and always resolves (never rejects),
+    // so there's no unhandled-rejection risk in not awaiting it here.
+    void sendOtpEmail(email, name, code);
 };
 
 // Re-send a code, enforcing the 60s cooldown. If the previous code already

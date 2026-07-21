@@ -26,6 +26,14 @@ interface ENVConfig {
         SMTP_PASS: string;
         SMTP_FROM: string;
     };
+    // Resend (HTTPS email API - api.resend.com). Preferred over SMTP/OAuth2
+    // in production: many hosts (Railway included) block outbound SMTP ports
+    // to fight spam, but never block outbound HTTPS, so this is the option
+    // that actually works once deployed.
+    RESEND: {
+        API_KEY: string;
+        FROM_EMAIL: string;
+    };
     // Google OAuth2 for Gmail sending. When MAIL_USER + CLIENT_ID/SECRET +
     // REFRESH_TOKEN are all present, this takes priority over SMTP password.
     GOOGLE: {
@@ -79,6 +87,10 @@ export const env: ENVConfig = {
         SMTP_USER: process.env.EMAIL_SENDER_SMTP_USER || "",
         SMTP_PASS: process.env.EMAIL_SENDER_SMTP_PASS || "",
         SMTP_FROM: process.env.EMAIL_SENDER_SMTP_FROM || process.env.EMAIL_SENDER_SMTP_USER || "",
+    },
+    RESEND: {
+        API_KEY: process.env.RESEND_API_KEY || "",
+        FROM_EMAIL: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
     },
     GOOGLE: {
         MAIL_USER: process.env.GOOGLE_MAIL_USER || "",
