@@ -80,19 +80,26 @@ const getAllProducts = async (user: IRequestUser, includeDeleted = false) => {
 };
 
 const createProduct = async (payload: ICreateProductPayload, user: IRequestUser) => {
-    const existing = await prisma.product.findUnique({
-        where: { owner_id_product_code: { owner_id: user.ownerId, product_code: payload.product_code } },
-    });
-
-    if (existing) {
-        throw new AppError(status.CONFLICT, "A product with this code already exists");
-    }
-
+    // No separate pre-check query for an existing product_code - the
+    // @@unique([owner_id, product_code]) constraint already guarantees this,
+    // so checking first only costs an extra network round trip to the DB on
+    // every single create (noticeable when the app and Postgres are far from
+    // each other, e.g. deployed to a different region than most users are
+    // in). Catching P2002 from the create() itself gets the same guarantee
+    // and the same friendly message for free.
     const product = await prisma.$transaction(async (tx) => {
-        const created = await tx.product.create({
-            data: { ...payload, owner_id: user.ownerId },
-            include: { supplier: true },
-        });
+        let created;
+        try {
+            created = await tx.product.create({
+                data: { ...payload, owner_id: user.ownerId },
+                include: { supplier: true },
+            });
+        } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+                throw new AppError(status.CONFLICT, "A product with this code already exists");
+            }
+            throw error;
+        }
 
         await bootstrapProductInventory(tx, created, user);
 
