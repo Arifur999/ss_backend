@@ -7,9 +7,15 @@ model Product {
   name          String
   image_url     String    @default("")
   supplier_id   String?
+  category      String?
   selling_price Decimal   @default(0) @db.Decimal(15, 2)
   cost_price    Decimal   @default(0) @db.Decimal(15, 2)
+  // Legacy flat discount amount - kept so existing rows aren't lost, but the
+  // app no longer reads/writes it. Superseded by the two percentage fields
+  // below (discount on the DP/cost side and on the MRP/selling side).
   discount      Decimal   @default(0) @db.Decimal(15, 2)
+  dp_discount   Decimal   @default(0) @db.Decimal(5, 2)
+  mrp_discount  Decimal   @default(0) @db.Decimal(5, 2)
   size          String?
   weight        String?
   opening_qty   Int       @default(0)
