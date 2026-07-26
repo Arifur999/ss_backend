@@ -47,7 +47,9 @@ export const updatePurchaseZodSchema = z.object({
 export const receivePurchaseItemZodSchema = z.object({
     purchase_item_id: z.uuid("Purchase item id must be a valid UUID"),
     receive_date: z.string("Receive date must be string (YYYY-MM-DD)").min(1, "Receive date is required"),
-    receiver_name: z.string("Receiver name must be string").min(1, "Receiver name is required"),
+    // Receiver name is optional - a product can be received without naming who
+    // took delivery (defaults to empty in the service).
+    receiver_name: z.string("Receiver name must be string").nullable().optional().transform((value) => value ?? ""),
     received_qty: z.number("Received qty must be a number").int().positive("Received qty must be positive"),
     condition: z.enum([ReceiveCondition.good, ReceiveCondition.damaged, ReceiveCondition.partial], "Invalid condition").optional(),
     notes: z.string("Notes must be string").optional(),
