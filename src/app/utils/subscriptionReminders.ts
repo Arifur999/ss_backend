@@ -1,6 +1,15 @@
 import { Prisma } from "../../generated/prisma/client.js";
+import { env } from "../../config/env.js";
 import { prisma } from "../lib/prisma.js";
 import { renderTemplate, sendTemplatedEmail } from "./email.js";
+
+// Where the email's "Payment Now" button sends the owner - straight to the
+// plan/payment page. FRONTEND_URL may be a comma-separated list (www + bare);
+// use the first entry.
+export const renewUrl = () => {
+    const base = (env.FRONTEND_URL.split(",")[0] || "").trim().replace(/\/+$/, "");
+    return `${base}/choose-plan`;
+};
 
 // ---------------------------------------------------------------------------
 // Expiry reminder emails.
@@ -56,6 +65,7 @@ export const sendExpiryReminders = async () => {
             days_left: daysLeft,
             expiry_date: formatDate(subscription.expiry_date),
             plan: subscription.plan_type,
+            renew_url: renewUrl(),
         };
 
         const recipient = subscription.owner_email || subscription.owner.email;

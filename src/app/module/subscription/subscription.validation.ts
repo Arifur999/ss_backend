@@ -5,6 +5,12 @@ import z from "zod";
 // it's just no longer offered as a choice here.)
 export const choosePlanZodSchema = z.object({
     plan_type: z.enum(["free_trial", "yearly"], "plan_type must be free_trial or yearly"),
+    // Optional contact info submitted from the free-trial card popup, saved
+    // for the super admin's follow-up (Free Trial page). All optional so the
+    // yearly path (no popup) is unaffected.
+    full_name: z.string("Full name must be string").optional(),
+    phone: z.string("Phone must be string").optional(),
+    address: z.string("Address must be string").optional(),
 });
 
 export type IChoosePlanPayload = z.infer<typeof choosePlanZodSchema>;

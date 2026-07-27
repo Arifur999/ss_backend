@@ -13,6 +13,7 @@ router.get("/payment-info", checkAuth(), PlatformSettingsController.getPaymentIn
 
 router.get("/", checkAuth(Role.super_admin), PlatformSettingsController.getFullSettings);
 router.put("/", checkAuth(Role.super_admin), validateRequest(updatePlatformSettingsZodSchema), PlatformSettingsController.updateSettings);
+router.post("/reset-reminder", checkAuth(Role.super_admin), PlatformSettingsController.resetReminderTemplate);
 router.post("/test-reminder", checkAuth(Role.super_admin), PlatformSettingsController.sendTestReminder);
 
 export const PlatformSettingsRoutes = router;

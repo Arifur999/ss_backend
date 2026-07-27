@@ -58,8 +58,12 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
     const hashedPassword = await bcrypt.hash(payload.password, 10);
     const registeredAt = new Date();
 
-    // Mirrors the old `handle_new_owner_registration` trigger:
-    // new owner starts an active 7-day free trial immediately.
+    // Registration no longer auto-starts the trial. The owner is created in a
+    // "no active plan yet" state and, after verifying their email, lands on
+    // /choose-plan where they explicitly start the 7-day trial (via the
+    // free-trial card popup) or pick the yearly plan. Modelled as expired so
+    // the frontend's ProtectedRoute sends them to /choose-plan (never a lock
+    // screen), and trial_used=false so the trial is still available to start.
     const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
             data: {
@@ -81,19 +85,19 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
                 owner_id: user.id,
                 business_name: payload.businessName,
                 owner_email: email,
-                status: SubscriptionStatus.active,
+                address: payload.address ?? "",
+                status: SubscriptionStatus.expired,
                 plan: "Trial",
                 trial_start: registeredAt,
                 trial_end: addDays(registeredAt, TRIAL_DAYS),
-                active_until: addDays(registeredAt, TRIAL_DAYS),
+                active_until: null,
                 plan_type: "free_trial",
-                plan_status: PlanStatus.active,
+                plan_status: PlanStatus.expired,
                 start_date: registeredAt,
-                expiry_date: addDays(registeredAt, TRIAL_DAYS),
-                // This registration IS the owner's one free trial - mark it
-                // used immediately so choosePlan() can never grant a second
-                // one via self-service once this one expires.
-                trial_used: true,
+                expiry_date: registeredAt,
+                // Trial not consumed yet - the owner starts it from the
+                // free-trial card popup on /choose-plan.
+                trial_used: false,
             },
         });
 

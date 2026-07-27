@@ -42,16 +42,28 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
 
-    // Every owner already got a free trial automatically at registration
-    // (trial_used is set true right there), so this only ever fires when
-    // someone tries to self-service a second trial after the first one
-    // expired. That's only allowed via the super admin's dedicated "grant
-    // trial extension" action, which does not go through choosePlan at all.
+    // The free trial can be started exactly once. trial_used is false for a
+    // fresh registration (started here from the popup) and flips true below;
+    // any later free_trial attempt is blocked - only the super admin's
+    // grant-trial-extension can revive access.
     if (isTrial && existing.trial_used) {
         throw new AppError(
             status.FORBIDDEN,
             "You've already used your free trial. Please choose the yearly plan, or ask your super admin to grant a trial extension."
         );
+    }
+
+    // Contact info from the free-trial popup (for super-admin follow-up).
+    // Persist the address on the subscription and name/phone on the user when
+    // supplied; blanks are ignored so existing values aren't wiped.
+    if (payload.full_name?.trim() || payload.phone?.trim()) {
+        await prisma.user.update({
+            where: { id: user.userId },
+            data: {
+                ...(payload.full_name?.trim() ? { full_name: payload.full_name.trim() } : {}),
+                ...(payload.phone?.trim() ? { phone: payload.phone.trim() } : {}),
+            },
+        });
     }
 
     const expiry = isTrial ? addDays(now, 7) : addMonths(now, 12);
@@ -72,6 +84,7 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
             expiry_date: expiry,
             blocked_reason: "",
             trial_used: isTrial ? true : existing.trial_used,
+            ...(payload.address?.trim() ? { address: payload.address.trim() } : {}),
         },
     });
 

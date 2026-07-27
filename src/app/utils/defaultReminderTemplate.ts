@@ -3,7 +3,7 @@
 // is only the starting point so the feature looks finished out of the box.
 //
 // Placeholders (see email.ts renderTemplate): {{name}} {{business_name}}
-// {{days_left}} {{expiry_date}} {{plan}}
+// {{days_left}} {{expiry_date}} {{plan}} {{renew_url}}
 export const DEFAULT_REMINDER_SUBJECT = "Your subscription expires in {{days_left}} days";
 
 export const DEFAULT_REMINDER_BODY = `
@@ -14,11 +14,13 @@ export const DEFAULT_REMINDER_BODY = `
     Your <strong>{{business_name}}</strong> workspace subscription ({{plan}} plan) will expire on
     <strong>{{expiry_date}}</strong> &mdash; that's just <strong>{{days_left}} day(s)</strong> from now.
   </p>
-  <div style="background: #f1f5f9; border-radius: 8px; padding: 16px; text-align: center; margin: 0 0 16px;">
-    <span style="font-size: 18px; font-weight: bold; color: #0f172a;">Renew now to avoid losing access</span>
+  <div style="text-align: center; margin: 0 0 20px;">
+    <a href="{{renew_url}}" style="display: inline-block; background: #1D9E75; color: #ffffff; font-size: 16px; font-weight: bold; text-decoration: none; padding: 12px 28px; border-radius: 8px;">
+      Payment Now
+    </a>
   </div>
   <p style="color: #334155; margin: 0 0 16px;">
-    Log in to your workspace and go to <strong>Choose Plan</strong> to renew your subscription.
+    Renew now to avoid losing access &mdash; the button above takes you straight to the plan &amp; payment page.
   </p>
   <p style="color: #94a3b8; font-size: 12px; margin: 0;">
     If you have already renewed, please ignore this email.

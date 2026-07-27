@@ -2,6 +2,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SUBJECT } from "../../utils/defaultReminderTemplate.js";
 import { renderTemplate, sendTemplatedEmail } from "../../utils/email.js";
+import { renewUrl } from "../../utils/subscriptionReminders.js";
 import { IUpdatePlatformSettingsPayload } from "./platformSettings.validation.js";
 
 // This table only ever has one row. Every read/write goes through this
@@ -43,6 +44,21 @@ const updateSettings = async (payload: IUpdatePlatformSettingsPayload) => {
     });
 };
 
+// Restore the reminder subject + body to the built-in default template. Used
+// by the "Reset to default" button so an already-saved (older) template can be
+// refreshed to the current default - e.g. to pick up the "Payment Now" button.
+const resetReminderTemplate = async () => {
+    const settings = await getOrCreateSettings();
+
+    return prisma.platformSetting.update({
+        where: { id: settings.id },
+        data: {
+            reminder_subject: DEFAULT_REMINDER_SUBJECT,
+            reminder_body: DEFAULT_REMINDER_BODY,
+        },
+    });
+};
+
 // "Send test email" button: renders the current template with placeholder
 // sample data and mails it to the super admin themselves, so template edits
 // can be previewed without waiting for a real expiry to roll around.
@@ -55,6 +71,7 @@ const sendTestReminder = async (admin: IRequestUser) => {
         days_left: 7,
         expiry_date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
         plan: "Yearly",
+        renew_url: renewUrl(),
     };
 
     const subject = renderTemplate(settings.reminder_subject, vars);
@@ -69,5 +86,6 @@ export const PlatformSettingsService = {
     getPaymentInfo,
     getFullSettings,
     updateSettings,
+    resetReminderTemplate,
     sendTestReminder,
 };

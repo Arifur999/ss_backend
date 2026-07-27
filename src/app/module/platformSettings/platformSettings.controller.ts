@@ -35,6 +35,16 @@ const updateSettings = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const resetReminderTemplate = catchAsync(async (req: Request, res: Response) => {
+    const result = await PlatformSettingsService.resetReminderTemplate();
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Reminder template reset to default",
+        data: result,
+    });
+});
+
 const sendTestReminder = catchAsync(async (req: Request, res: Response) => {
     const result = await PlatformSettingsService.sendTestReminder(req.user as IRequestUser);
     sendResponse(res, {
@@ -51,5 +61,6 @@ export const PlatformSettingsController = {
     getPaymentInfo,
     getFullSettings,
     updateSettings,
+    resetReminderTemplate,
     sendTestReminder,
 };
