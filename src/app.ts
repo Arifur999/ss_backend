@@ -51,14 +51,30 @@ cron.schedule("0 9 * * *", async () => {
 // https://example.com,https://www.example.com). Frontend and backend now
 // commonly live on entirely different hosts/domains (Railway + Hostinger),
 // so this can no longer assume same-origin like the nginx-proxied setup did.
-const allowedOrigins = [
+const staticAllowedOrigins = [
     ...env.FRONTEND_URL.split(",").map((url) => url.trim()).filter(Boolean),
     "http://localhost:5173",
     "http://localhost:3000",
 ];
 
+// Besides the explicitly configured origins we also allow:
+//  (a) any localhost / 127.0.0.1 port during development (5174, 4173, ...), and
+//  (b) Hostinger preview subdomains (*.hostingersite.com) - the site is served
+//      from a temporary preview URL (e.g. purple-otter-123.hostingersite.com)
+//      until the real domain (cosmeticdentalbranding.com) is attached.
+// Requests with no Origin header (curl, server-to-server, same-origin) pass.
+function isAllowedOrigin(origin?: string): boolean {
+    if (!origin) return true;
+    if (staticAllowedOrigins.includes(origin)) return true;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+    if (/^https:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(origin)) return true;
+    return false;
+}
+
 app.use(cors({
-    origin: allowedOrigins,
+    origin(origin, callback) {
+        callback(null, isAllowedOrigin(origin));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
