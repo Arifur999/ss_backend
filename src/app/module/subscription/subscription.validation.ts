@@ -24,6 +24,10 @@ export const submitManualPaymentZodSchema = z.object({
         .string("Transaction ID must be string")
         .min(6, "Transaction ID looks too short")
         .max(30, "Transaction ID looks too long"),
+    // Which plan the owner is paying for (the amount is still resolved from
+    // server-side settings). Optional for backward-compat with the old yearly
+    // checkout; falls back to the owner's current subscription plan.
+    plan_type: z.enum(["monthly", "yearly"]).optional(),
 });
 
 export type ISubmitManualPaymentPayload = z.infer<typeof submitManualPaymentZodSchema>;

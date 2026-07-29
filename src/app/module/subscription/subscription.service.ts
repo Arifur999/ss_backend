@@ -43,14 +43,16 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     const isTrial = payload.plan_type === "free_trial";
     const isMonthly = payload.plan_type === "monthly";
 
-    // The free trial can be started exactly once. trial_used is false for a
-    // fresh registration (started here from the popup) and flips true below;
-    // any later free_trial attempt is blocked - only the super admin's
-    // grant-trial-extension can revive access.
-    if (isTrial && existing.trial_used) {
+    // The free trial can be started exactly once, and NEVER once the owner is
+    // on a paid plan - otherwise clicking "free trial" would wipe out a live
+    // monthly/yearly subscription. Blocked if the trial was already used OR the
+    // owner currently holds a paid plan. Only the super admin's
+    // grant-trial-extension can revive trial access.
+    const hasPaidPlan = existing.plan_type === "monthly" || existing.plan_type === "yearly";
+    if (isTrial && (existing.trial_used || hasPaidPlan)) {
         throw new AppError(
             status.FORBIDDEN,
-            "You've already used your free trial. Please choose the yearly plan, or ask your super admin to grant a trial extension."
+            "The free trial isn't available on this account. Please choose the monthly or yearly plan, or ask your super admin to grant a trial extension."
         );
     }
 
@@ -124,7 +126,16 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
     const existingSub = await prisma.ownerSubscription.findUnique({
         where: { owner_id: user.ownerId },
     });
-    const planType = existingSub?.plan_type === "monthly" ? "monthly" : "yearly";
+    // The plan being paid for: prefer what the checkout sent (renew / switch),
+    // otherwise fall back to the owner's current subscription plan.
+    const planType =
+        payload.plan_type === "monthly"
+            ? "monthly"
+            : payload.plan_type === "yearly"
+                ? "yearly"
+                : existingSub?.plan_type === "monthly"
+                    ? "monthly"
+                    : "yearly";
     const amount = planType === "monthly" ? monthly_price : yearly_price;
 
     const now = new Date();
