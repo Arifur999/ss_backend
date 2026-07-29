@@ -4,6 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
+import { sendTemplatedEmail } from "../../utils/email.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
 
 // Owner list with profile + subscription, shaped like the old superAdminLive loader.
@@ -326,6 +327,94 @@ const getPlatformReports = async () => {
     };
 };
 
+// Owners who have paid at least once (>=1 confirmed payment). Shared shape for
+// the Active and Churned customer pages; `is_active` decides which list an
+// owner falls into (active = subscription active AND not yet expired).
+const getPaidCustomers = async () => {
+    const owners = await prisma.user.findMany({
+        where: {
+            role: Role.owner,
+            subscription_payments: { some: { status: "paid" } },
+        },
+        include: {
+            subscription: true,
+            subscription_payments: { where: { status: "paid" }, orderBy: { date: "desc" } },
+        },
+        orderBy: { created_at: "desc" },
+    });
+
+    const now = Date.now();
+    return owners.map((owner) => {
+        const sub = owner.subscription;
+        const paid = owner.subscription_payments;
+        const lastPaid = paid[0] ?? null;
+        const expiry = sub?.expiry_date ?? null;
+        const daysLeft = expiry ? Math.ceil((expiry.getTime() - now) / 86400000) : null;
+        const isActive = Boolean(
+            sub && sub.status === SubscriptionStatus.active && expiry && expiry.getTime() > now
+        );
+        return {
+            id: owner.id,
+            email: owner.email,
+            full_name: owner.full_name,
+            phone: owner.phone,
+            last_active: owner.last_active,
+            business_name: sub?.business_name ?? "",
+            address: sub?.address ?? "",
+            plan: sub?.plan ?? "",
+            plan_type: sub?.plan_type ?? "",
+            status: sub?.status ?? "",
+            start_date: sub?.start_date ?? null,
+            expiry_date: expiry,
+            days_left: daysLeft,
+            last_paid_amount: lastPaid ? Number(lastPaid.amount) : 0,
+            last_paid_date: lastPaid?.date ?? null,
+            total_paid: paid.reduce((sum, payment) => sum + Number(payment.amount), 0),
+            paid_count: paid.length,
+            is_active: isActive,
+        };
+    });
+};
+
+const getActiveCustomers = async () => (await getPaidCustomers()).filter((customer) => customer.is_active);
+const getChurnedCustomers = async () => (await getPaidCustomers()).filter((customer) => !customer.is_active);
+
+// Manual follow-up email the super admin sends to a churned/lapsed customer.
+const sendFollowupEmail = async (
+    ownerId: string,
+    payload: { subject?: string; message?: string },
+    admin: IRequestUser
+) => {
+    const message = (payload.message ?? "").trim();
+    if (!message) {
+        throw new AppError(status.BAD_REQUEST, "Message is required");
+    }
+
+    const owner = await prisma.user.findFirst({
+        where: { id: ownerId, role: Role.owner },
+        include: { subscription: true },
+    });
+    if (!owner) {
+        throw new AppError(status.NOT_FOUND, "Owner not found");
+    }
+
+    const escape = (value: string) =>
+        value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const subject = (payload.subject ?? "").trim() || `A quick note from ${owner.subscription?.business_name || "us"}`;
+    const bodyHtml = `<div style="font-family:Inter,Arial,sans-serif;font-size:14px;color:#0f172a;line-height:1.6;white-space:pre-wrap;">${escape(message)}</div>`;
+
+    const sent = await sendTemplatedEmail(owner.email, subject, bodyHtml);
+
+    await logAdminActivity({
+        ownerId,
+        actorEmail: admin.email,
+        action: "followup_email",
+        detail: `Follow-up email ${sent ? "sent" : "attempted (email not configured)"} to ${owner.email}`,
+    });
+
+    return { sent, email: owner.email };
+};
+
 export const SuperAdminService = {
     getAllOwners,
     updateOwnerSubscription,
@@ -336,4 +425,7 @@ export const SuperAdminService = {
     getActivities,
     getDashboardStats,
     getPlatformReports,
+    getActiveCustomers,
+    getChurnedCustomers,
+    sendFollowupEmail,
 };

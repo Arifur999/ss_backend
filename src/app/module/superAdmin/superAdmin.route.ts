@@ -16,5 +16,8 @@ router.patch("/payments/:id", checkAuth(Role.super_admin), validateRequest(updat
 router.get("/activities", checkAuth(Role.super_admin), SuperAdminController.getActivities);
 router.get("/stats", checkAuth(Role.super_admin), SuperAdminController.getDashboardStats);
 router.get("/reports", checkAuth(Role.super_admin), SuperAdminController.getPlatformReports);
+router.get("/active-customers", checkAuth(Role.super_admin), SuperAdminController.getActiveCustomers);
+router.get("/churned-customers", checkAuth(Role.super_admin), SuperAdminController.getChurnedCustomers);
+router.post("/owners/:ownerId/followup-email", checkAuth(Role.super_admin), SuperAdminController.sendFollowupEmail);
 
 export const SuperAdminRoutes = router;

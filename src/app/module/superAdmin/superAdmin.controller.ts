@@ -107,6 +107,40 @@ const getPlatformReports = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getActiveCustomers = catchAsync(async (req: Request, res: Response) => {
+    const result = await SuperAdminService.getActiveCustomers();
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Active customers retrieved successfully",
+        data: result,
+    });
+});
+
+const getChurnedCustomers = catchAsync(async (req: Request, res: Response) => {
+    const result = await SuperAdminService.getChurnedCustomers();
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Churned customers retrieved successfully",
+        data: result,
+    });
+});
+
+const sendFollowupEmail = catchAsync(async (req: Request, res: Response) => {
+    const result = await SuperAdminService.sendFollowupEmail(
+        req.params.ownerId as string,
+        req.body,
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Follow-up email processed",
+        data: result,
+    });
+});
+
 export const SuperAdminController = {
     getAllOwners,
     updateOwnerSubscription,
@@ -117,4 +151,7 @@ export const SuperAdminController = {
     getActivities,
     getDashboardStats,
     getPlatformReports,
+    getActiveCustomers,
+    getChurnedCustomers,
+    sendFollowupEmail,
 };
