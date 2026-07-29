@@ -197,7 +197,16 @@ const updatePayment = async (
         // Confirming a payment activates the owner's chosen plan.
         if (payload.status === "paid" && payment.status !== "paid") {
             const now = new Date();
-            const expiry = new Date(now);
+            // Renewals stack: if the owner is still active, extend from their
+            // current expiry; otherwise start from now.
+            const currentSub = await tx.ownerSubscription.findUnique({
+                where: { owner_id: payment.owner_id },
+            });
+            const base =
+                currentSub?.expiry_date && currentSub.expiry_date.getTime() > now.getTime()
+                    ? new Date(currentSub.expiry_date)
+                    : new Date(now);
+            const expiry = new Date(base);
             if (nextPayment.plan_type === "yearly") {
                 expiry.setMonth(expiry.getMonth() + 12);
             } else {

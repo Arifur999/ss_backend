@@ -145,16 +145,24 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
             },
         });
 
-        // Make sure the subscription reflects "awaiting approval" even if the
-        // owner somehow reached this screen without going through choosePlan.
-        await tx.ownerSubscription.update({
-            where: { owner_id: user.ownerId },
-            data: {
-                status: SubscriptionStatus.pending,
-                plan_type: planType,
-                plan_status: PlanStatus.expired,
-            },
-        });
+        // If the owner is renewing while STILL ACTIVE, don't lock them out -
+        // leave the subscription active; approval will extend the expiry. Only
+        // owners who are expired/pending get flipped to "awaiting approval".
+        const activeNow =
+            existingSub?.plan_status === PlanStatus.active &&
+            existingSub?.expiry_date != null &&
+            existingSub.expiry_date.getTime() > Date.now();
+
+        if (!activeNow) {
+            await tx.ownerSubscription.update({
+                where: { owner_id: user.ownerId },
+                data: {
+                    status: SubscriptionStatus.pending,
+                    plan_type: planType,
+                    plan_status: PlanStatus.expired,
+                },
+            });
+        }
 
         return created;
     });
