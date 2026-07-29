@@ -1,10 +1,8 @@
 import z from "zod";
 
-// Only two plans are sold now: a 7-day free trial and the yearly plan.
-// (The "monthly" plan_type still exists in the DB enum for historical rows,
-// it's just no longer offered as a choice here.)
+// Plans sold: a 7-day free trial, a monthly plan, and a yearly plan.
 export const choosePlanZodSchema = z.object({
-    plan_type: z.enum(["free_trial", "yearly"], "plan_type must be free_trial or yearly"),
+    plan_type: z.enum(["free_trial", "monthly", "yearly"], "plan_type must be free_trial, monthly or yearly"),
     // Optional contact info submitted from the free-trial card popup, saved
     // for the super admin's follow-up (Free Trial page). All optional so the
     // yearly path (no popup) is unaffected.

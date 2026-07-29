@@ -105,6 +105,9 @@ model PlatformSetting {
   // page so the discount is visible (e.g. ~7188 crossed out -> 5780). Purely
   // a marketing display value - never charged, never used in payment math.
   yearly_original_price Decimal @default(7188) @db.Decimal(15, 2)
+  // Monthly plan price (no yearly discount). Charged when an owner picks the
+  // monthly plan from the Current Plan / choose-plan cards.
+  monthly_price Decimal @default(600) @db.Decimal(15, 2)
 
   // Expiry reminder email template. Supports {{name}}, {{business_name}},
   // {{days_left}}, {{expiry_date}}, {{plan}} placeholders - see

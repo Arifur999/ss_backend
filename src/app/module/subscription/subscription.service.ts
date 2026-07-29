@@ -41,6 +41,7 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
 
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
+    const isMonthly = payload.plan_type === "monthly";
 
     // The free trial can be started exactly once. trial_used is false for a
     // fresh registration (started here from the popup) and flips true below;
@@ -66,13 +67,13 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
         });
     }
 
-    const expiry = isTrial ? addDays(now, 7) : addMonths(now, 12);
+    const expiry = isTrial ? addDays(now, 7) : isMonthly ? addMonths(now, 1) : addMonths(now, 12);
 
     const subscription = await prisma.ownerSubscription.update({
         where: { owner_id: user.ownerId },
         data: {
             status: isTrial ? SubscriptionStatus.active : SubscriptionStatus.pending,
-            plan: isTrial ? "Trial" : "Enterprise",
+            plan: isTrial ? "Trial" : isMonthly ? "Starter" : "Enterprise",
             trial_start: now,
             trial_end: addDays(now, 7),
             active_until: isTrial ? expiry : null,
@@ -117,7 +118,14 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
 
     // Amount is always taken from the server-side settings, never trusted
     // from the client, so a tampered request can't under-report what's owed.
-    const { yearly_price } = await PlatformSettingsService.getPaymentInfo();
+    // The plan the owner is paying for was set on their subscription by
+    // choosePlan (monthly or yearly); the amount follows that plan.
+    const { yearly_price, monthly_price } = await PlatformSettingsService.getPaymentInfo();
+    const existingSub = await prisma.ownerSubscription.findUnique({
+        where: { owner_id: user.ownerId },
+    });
+    const planType = existingSub?.plan_type === "monthly" ? "monthly" : "yearly";
+    const amount = planType === "monthly" ? monthly_price : yearly_price;
 
     const now = new Date();
 
@@ -126,10 +134,10 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
             data: {
                 owner_id: user.ownerId,
                 invoice_no: `SUB-${Date.now()}`,
-                plan_type: "yearly",
+                plan_type: planType,
                 method: "bkash_manual",
                 status: "pending",
-                amount: yearly_price,
+                amount,
                 sender_number: payload.sender_number,
                 trx_id: payload.trx_id,
                 date: now,
@@ -143,7 +151,7 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
             where: { owner_id: user.ownerId },
             data: {
                 status: SubscriptionStatus.pending,
-                plan_type: "yearly",
+                plan_type: planType,
                 plan_status: PlanStatus.expired,
             },
         });
