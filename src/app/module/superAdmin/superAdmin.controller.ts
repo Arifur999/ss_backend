@@ -141,8 +141,23 @@ const sendFollowupEmail = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const resetOwnerData = catchAsync(async (req: Request, res: Response) => {
+    const result = await SuperAdminService.resetOwnerData(
+        req.params.ownerId as string,
+        (req.body?.password as string) || "",
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Owner data reset successfully",
+        data: result,
+    });
+});
+
 export const SuperAdminController = {
     getAllOwners,
+    resetOwnerData,
     updateOwnerSubscription,
     grantTrialExtension,
     deleteOwner,

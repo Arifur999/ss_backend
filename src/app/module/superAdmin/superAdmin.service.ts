@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import status from "http-status";
 import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
@@ -162,6 +163,69 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
     });
 
     return { message: "Owner deleted successfully" };
+};
+
+// Resets an owner's workspace to a clean slate: deletes ALL operational data
+// (products, sales, purchases, customers, suppliers, accounts, expenses,
+// employees, loans, etc.) but keeps the user account, their subscription/plan
+// (stays exactly as-is) and their business settings (name/logo). Requires the
+// OWNER's own password as a confirmation gate.
+const resetOwnerData = async (ownerId: string, password: string, admin: IRequestUser) => {
+    const owner = await prisma.user.findFirst({
+        where: { id: ownerId, role: Role.owner },
+    });
+
+    if (!owner) {
+        throw new AppError(status.NOT_FOUND, "Owner not found");
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, owner.password);
+    if (!isPasswordValid) {
+        throw new AppError(status.UNAUTHORIZED, "Incorrect password - reset cancelled.");
+    }
+
+    await prisma.$transaction([
+        prisma.saleItemCostLayer.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.inventoryBatch.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.inventoryHistory.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.inventory.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.saleDelivery.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.salePayment.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.customerPayment.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.saleItem.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.sale.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.purchaseReceive.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.supplierPayment.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.purchaseItem.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.purchase.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.otherIncome.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.salaryTransaction.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.attendance.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.employee.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.expense.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.expenseCategory.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.loan.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.loanLender.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.accountTransfer.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.investment.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.profitWithdrawal.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.product.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.customer.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.supplier.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.account.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.shareholder.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.monthlyTarget.deleteMany({ where: { owner_id: ownerId } }),
+        prisma.recycleBinItem.deleteMany({ where: { owner_id: ownerId } }),
+    ]);
+
+    await logAdminActivity({
+        ownerId,
+        actorEmail: admin.email,
+        action: "owner_data_reset",
+        detail: `All workspace data reset for ${owner.email} (account + plan kept)`,
+    });
+
+    return { message: "Owner data reset successfully. Their plan stays active." };
 };
 
 const getAllPayments = async () => {
@@ -437,4 +501,5 @@ export const SuperAdminService = {
     getActiveCustomers,
     getChurnedCustomers,
     sendFollowupEmail,
+    resetOwnerData,
 };
