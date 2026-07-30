@@ -186,12 +186,17 @@ const resendVerificationOtp = async (email: string) => {
 const forgotPassword = async (email: string) => {
     const normalizedEmail = email.trim().toLowerCase();
 
+    // The owner asked for a clear signal when the email isn't registered, so we
+    // tell the user directly (and send NO code) instead of the privacy-friendly
+    // "if an account exists..." response.
     const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (user) {
-        await otpUtils.issueOtp(normalizedEmail, user.full_name, OTP_PURPOSE_RESET_PASSWORD);
+    if (!user) {
+        throw new AppError(status.NOT_FOUND, "This email is not registered. Please use the email you signed up with.");
     }
 
-    return { message: "If an account exists for this email, a reset code has been sent to it." };
+    await otpUtils.issueOtp(normalizedEmail, user.full_name, OTP_PURPOSE_RESET_PASSWORD);
+
+    return { message: "A reset code has been sent to your email." };
 };
 
 // Step 2: verify the reset code and set the new password.
