@@ -302,7 +302,58 @@ const updatePayment = async (
         detail: `Payment ${payment.invoice_no} marked as ${payload.status ?? "updated"}`,
     });
 
+    // When this approval just activated a paid plan, email the owner a detailed
+    // invoice for their records. Fire-and-forget - a slow mail provider must
+    // never block the approval response.
+    if (payload.status === "paid" && payment.status !== "paid") {
+        const owner = await prisma.user.findUnique({
+            where: { id: payment.owner_id },
+            include: { subscription: true },
+        });
+        if (owner?.email) {
+            void sendTemplatedEmail(owner.email, `Payment invoice - ${updated.invoice_no}`, buildInvoiceHtml(owner, updated));
+        }
+    }
+
     return updated;
+};
+
+// Renders the plan-purchase invoice email sent to an owner on approval.
+const buildInvoiceHtml = (owner: any, payment: any) => {
+    const money = (n: number) => `Tk ${Number(n || 0).toLocaleString("en-US")}`;
+    const day = (d?: Date | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-");
+    const planLabel = payment.plan_type === "yearly" ? "Yearly plan" : "Monthly plan";
+    const business = owner.subscription?.business_name || owner.full_name || "";
+    const expiry = owner.subscription?.expiry_date;
+    const row = (label: string, value: string, bold = false) =>
+        `<tr><td style="padding:8px 0;color:#64748b;">${label}</td><td style="padding:8px 0;text-align:right;${bold ? "font-weight:600;" : ""}">${value}</td></tr>`;
+
+    return `
+    <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;">
+      <div style="background:#0b0b0f;color:#ffffff;padding:20px 24px;border-radius:12px 12px 0 0;">
+        <h2 style="margin:0;font-size:20px;">Payment Invoice</h2>
+        <p style="margin:4px 0 0;font-size:13px;color:#cbd5e1;">Invoice #${payment.invoice_no}</p>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
+        <p style="margin:0 0 16px;font-size:14px;">Hi ${owner.full_name || "there"}, thank you for your payment - your subscription is now active.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          ${row("Business", business, true)}
+          ${row("Plan", planLabel, true)}
+          ${row("Payment date", day(payment.date))}
+          ${row("Method", "bKash (manual)")}
+          ${row("Transaction ID", payment.trx_id || "-")}
+          ${row("Paid from", payment.sender_number || "-")}
+          ${row("Valid until", day(expiry), true)}
+        </table>
+        <div style="margin-top:16px;padding:16px;background:#f1f5f9;border-radius:10px;">
+          <table style="width:100%;"><tr>
+            <td style="font-weight:700;font-size:15px;">Amount paid</td>
+            <td style="text-align:right;font-weight:800;font-size:22px;">${money(Number(payment.amount))}</td>
+          </tr></table>
+        </div>
+        <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">This is a system-generated invoice for your records.</p>
+      </div>
+    </div>`;
 };
 
 const getActivities = async (limit = 100) => {

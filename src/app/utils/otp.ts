@@ -20,6 +20,7 @@ const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export const OTP_PURPOSE_VERIFY_EMAIL = "verify_email";
+export const OTP_PURPOSE_RESET_PASSWORD = "reset_password";
 
 // Cryptographically-fine-for-otp random 6 digit code (100000..999999).
 const generateOtpCode = () =>

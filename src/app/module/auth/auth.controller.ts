@@ -83,6 +83,28 @@ const resendOtp = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const forgotPassword = catchAsync(async (req: Request, res: Response) => {
+    const result = await AuthService.forgotPassword(req.body.email);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: result.message,
+        data: result,
+    });
+});
+
+const resetPassword = catchAsync(async (req: Request, res: Response) => {
+    const result = await AuthService.resetPassword(req.body.email, req.body.otp, req.body.password);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: result.message,
+        data: result,
+    });
+});
+
 const getMe = catchAsync(async (req: Request, res: Response) => {
     const result = await AuthService.getMe(req.user as IRequestUser);
 
@@ -151,6 +173,8 @@ export const AuthController = {
     loginUser,
     verifyOtp,
     resendOtp,
+    forgotPassword,
+    resetPassword,
     getMe,
     refreshToken,
     logoutUser,

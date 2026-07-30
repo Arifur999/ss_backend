@@ -5,7 +5,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
-import { otpUtils } from "../../utils/otp.js";
+import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
@@ -180,6 +180,41 @@ const resendVerificationOtp = async (email: string) => {
     return { sent: true, email: normalizedEmail };
 };
 
+// Step 1 of "forgot password": email a 6-digit reset code. Always responds
+// success (never reveals whether the email is registered), but only sends a
+// code when the account actually exists.
+const forgotPassword = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (user) {
+        await otpUtils.issueOtp(normalizedEmail, user.full_name, OTP_PURPOSE_RESET_PASSWORD);
+    }
+
+    return { message: "If an account exists for this email, a reset code has been sent to it." };
+};
+
+// Step 2: verify the reset code and set the new password.
+const resetPassword = async (email: string, code: string, newPassword: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) {
+        throw new AppError(status.NOT_FOUND, "No account found with this email");
+    }
+
+    // Throws on wrong/expired/over-attempted codes.
+    await otpUtils.verifyOtp(normalizedEmail, code, OTP_PURPOSE_RESET_PASSWORD);
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+    });
+
+    return { message: "Password reset successfully. Please sign in with your new password." };
+};
+
 const loginUser = async (payload: ILoginPayload) => {
     const email = payload.email.trim().toLowerCase();
 
@@ -308,6 +343,8 @@ export const AuthService = {
     loginUser,
     verifyEmailOtp,
     resendVerificationOtp,
+    forgotPassword,
+    resetPassword,
     getMe,
     getNewTokens,
     touchOwnerActivity,

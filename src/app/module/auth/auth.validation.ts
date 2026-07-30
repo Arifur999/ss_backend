@@ -23,3 +23,15 @@ export const verifyOtpZodSchema = z.object({
 export const resendOtpZodSchema = z.object({
     email: z.email("Email must be a valid email address"),
 });
+
+// Forgot password: request a reset code by email.
+export const forgotPasswordZodSchema = z.object({
+    email: z.email("Email must be a valid email address"),
+});
+
+// Reset password: the emailed code + the new password.
+export const resetPasswordZodSchema = z.object({
+    email: z.email("Email must be a valid email address"),
+    otp: z.string("OTP must be string").length(6, "OTP must be exactly 6 digits"),
+    password: z.string("Password must be string").min(6, "Password must be at least 6 characters"),
+});
