@@ -22,6 +22,7 @@ import { PurchaseRoutes } from "../module/purchase/purchase.route.js";
 import { RecycleBinRoutes } from "../module/recycleBin/recycleBin.route.js";
 import { SaleRoutes } from "../module/sale/sale.route.js";
 import { SalePaymentRoutes } from "../module/salePayment/salePayment.route.js";
+import { SmsRoutes } from "../module/sms/sms.route.js";
 import { SalaryTransactionRoutes } from "../module/salaryTransaction/salaryTransaction.route.js";
 import { ShareholderRoutes } from "../module/shareholder/shareholder.route.js";
 import { SubscriptionRoutes } from "../module/subscription/subscription.route.js";
@@ -64,5 +65,6 @@ router.use("/attendance", AttendanceRoutes);
 router.use("/recycle-bin", RecycleBinRoutes);
 router.use("/uploads", UploadRoutes);
 router.use("/platform-settings", PlatformSettingsRoutes);
+router.use("/sms", SmsRoutes);
 
 export const indexRoute = router;

@@ -51,6 +51,14 @@ interface ENVConfig {
         PASSWORD: string;
         CALLBACK_URL: string;
     };
+    // MRAM SMS gateway (msg.mram.com.bd). The master API key + approved sender
+    // ID stay server-side only - owners never see them; all SMS is proxied
+    // through the backend which meters per-owner credits.
+    MRAM: {
+        API_KEY: string;
+        SENDER_ID: string;
+        BASE_URL: string;
+    };
 }
 
 const requiredEnvVars = [
@@ -117,4 +125,9 @@ export const env: ENVConfig = {
             CALLBACK_URL: process.env.BKASH_CALLBACK_URL || "http://localhost:5000/api/v1/payments/bkash/callback",
         };
     })(),
+    MRAM: {
+        API_KEY: process.env.MRAM_API_KEY || "",
+        SENDER_ID: process.env.MRAM_SENDER_ID || "",
+        BASE_URL: process.env.MRAM_BASE_URL || "https://msg.mram.com.bd",
+    },
 };

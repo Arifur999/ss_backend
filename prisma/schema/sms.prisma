@@ -1,0 +1,71 @@
+// SMS reseller / credit-wallet feature (built on the MRAM gateway).
+// The platform buys bulk SMS from MRAM; owners buy credit packages here and
+// spend credits when they send SMS to their contacts.
+
+// Sellable credit packs the super admin configures (e.g. "500 SMS - 400 Tk").
+model SmsPackage {
+  id         String   @id @default(uuid())
+  name       String
+  sms_count  Int
+  price      Decimal  @default(0) @db.Decimal(15, 2)
+  active     Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  @@map("sms_packages")
+}
+
+// One credit wallet per owner. `balance` is the number of SMS credits left.
+model SmsWallet {
+  id         String   @id @default(uuid())
+  owner_id   String   @unique
+  balance    Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@map("sms_wallets")
+}
+
+// A manual bKash purchase of a credit pack. On approval the wallet is topped up.
+model SmsPurchase {
+  id            String   @id @default(uuid())
+  owner_id      String
+  package_id    String?
+  package_name  String   @default("")
+  sms_count     Int
+  amount        Decimal  @default(0) @db.Decimal(15, 2)
+  status        String   @default("pending") // pending | paid | rejected
+  method        String   @default("bkash_manual")
+  sender_number String   @default("")
+  trx_id        String   @default("")
+  invoice_no    String   @default("")
+  notes         String   @default("")
+  date          DateTime @default(now())
+  created_at    DateTime @default(now())
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@map("sms_purchases")
+}
+
+// Log of every SMS batch an owner sent through the gateway.
+model SmsMessage {
+  id              String   @id @default(uuid())
+  owner_id        String
+  recipient_count Int      @default(0)
+  segments        Int      @default(1)
+  credits_used    Int      @default(0)
+  message         String   @db.Text
+  is_unicode      Boolean  @default(false)
+  status          String   @default("sent") // sent | failed
+  shoot_id        String   @default("")
+  response        String   @default("") @db.Text
+  created_at      DateTime @default(now())
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@map("sms_messages")
+}

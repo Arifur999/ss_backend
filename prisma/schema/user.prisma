@@ -26,6 +26,10 @@ model User {
   subscription          OwnerSubscription?
   subscription_payments SubscriptionPayment[]
 
+  sms_wallet    SmsWallet?
+  sms_purchases SmsPurchase[]
+  sms_messages  SmsMessage[]
+
   @@index([owner_id])
   @@map("users")
 }
