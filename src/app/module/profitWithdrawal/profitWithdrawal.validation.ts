@@ -9,6 +9,8 @@ export const createProfitWithdrawalZodSchema = z.object({
     account_name: z.string("Account name must be string").min(1, "Account name is required"),
     profit_month: z.number("Profit month must be a number").int().min(1).max(12).nullable().optional(),
     profit_year: z.number("Profit year must be a number").int().nullable().optional(),
+    to_month: z.number("To month must be a number").int().min(1).max(12).nullable().optional(),
+    to_year: z.number("To year must be a number").int().nullable().optional(),
     notes: z.string("Notes must be string").optional(),
 });
 

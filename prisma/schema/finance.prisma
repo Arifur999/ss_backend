@@ -34,6 +34,9 @@ model ProfitWithdrawal {
   account_name     String
   profit_month     Int?
   profit_year      Int?
+  // Optional "to" side of a month range (profit_month/profit_year are the "from").
+  to_month         Int?
+  to_year          Int?
   notes            String   @default("")
   created_by       String?
   created_at       DateTime @default(now())

@@ -450,6 +450,43 @@ const deletePurchase = async (id: string, user: IRequestUser, recycleMeta?: IRec
     return { message: "Purchase moved to recycle bin" };
 };
 
+// Delete a single line item from a purchase. Only allowed when nothing has been
+// received against it (otherwise inventory/FIFO would be left inconsistent). If
+// it's the purchase's only remaining item, the whole purchase is removed (to
+// recycle bin); otherwise the item is dropped and the purchase totals recomputed.
+const deletePurchaseItem = async (itemId: string, user: IRequestUser) => {
+    const item = await prisma.purchaseItem.findFirst({
+        where: { id: itemId, owner_id: user.ownerId },
+        include: { purchase: { include: { purchase_items: true } } },
+    });
+
+    if (!item) {
+        throw new AppError(status.NOT_FOUND, "Purchase item not found");
+    }
+    if ((item.received_qty ?? 0) > 0) {
+        throw new AppError(status.BAD_REQUEST, "Cannot delete an item that has already been received. Reverse the received quantity first.");
+    }
+
+    const purchase = item.purchase;
+    if (purchase.purchase_items.length <= 1) {
+        // Last line -> remove the whole purchase (goes to recycle bin).
+        return deletePurchase(purchase.id, user);
+    }
+
+    await prisma.$transaction(async (tx) => {
+        await tx.purchaseItem.delete({ where: { id: itemId } });
+        const total = purchase.purchase_items
+            .filter((row) => row.id !== itemId)
+            .reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
+        await tx.purchase.update({
+            where: { id: purchase.id },
+            data: { total_amount: total, net_amount: total },
+        });
+    });
+
+    return { message: "Purchase item deleted" };
+};
+
 export const PurchaseService = {
     getAllPurchases,
     createPurchase,
@@ -459,5 +496,6 @@ export const PurchaseService = {
     deleteReceive,
     setItemReceivedQty,
     updatePurchaseItem,
+    deletePurchaseItem,
     deletePurchase,
 };

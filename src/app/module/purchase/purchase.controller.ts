@@ -114,6 +114,16 @@ const deletePurchase = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const deletePurchaseItem = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.deletePurchaseItem(req.params.itemId as string, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Purchase item deleted successfully",
+        data: result,
+    });
+});
+
 export const PurchaseController = {
     getAllPurchases,
     createPurchase,
@@ -123,5 +133,6 @@ export const PurchaseController = {
     deleteReceive,
     setItemReceivedQty,
     updatePurchaseItem,
+    deletePurchaseItem,
     deletePurchase,
 };
