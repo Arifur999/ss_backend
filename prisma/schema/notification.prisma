@@ -1,0 +1,29 @@
+// Super-admin broadcast notifications. One row per announcement; every user
+// (owner/team) sees the same list. Per-user read state lives in NotificationRead.
+model AdminNotification {
+  id         String   @id @default(uuid())
+  title      String
+  message    String   @db.Text
+  created_by String   @default("") // super admin email who sent it
+  created_at DateTime @default(now())
+
+  reads NotificationRead[]
+
+  @@index([created_at])
+  @@map("admin_notifications")
+}
+
+// Marks a notification as read by a specific user (unread = notifications with
+// no matching read row for that user).
+model NotificationRead {
+  id              String   @id @default(uuid())
+  notification_id String
+  user_id         String
+  read_at         DateTime @default(now())
+
+  notification AdminNotification @relation(fields: [notification_id], references: [id], onDelete: Cascade)
+
+  @@unique([notification_id, user_id])
+  @@index([user_id])
+  @@map("notification_reads")
+}
