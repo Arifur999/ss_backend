@@ -128,6 +128,17 @@ const setDpPrice = async (productId: string, dpPrice: number | null, user: IRequ
             });
         }
 
+        // Sales made before this product had a purchase rate were stored with
+        // cost_price 0 and counted no profit. Now that a rate exists, fill those
+        // lines in so their profit appears in the dashboard and reports; lines
+        // that already carry a cost keep it.
+        if (dpPrice !== null && dpPrice > 0) {
+            await tx.saleItem.updateMany({
+                where: { owner_id: user.ownerId, product_id: productId, cost_price: 0 },
+                data: { cost_price: dpPrice },
+            });
+        }
+
         return updated;
     });
 };

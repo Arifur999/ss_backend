@@ -159,6 +159,20 @@ const updateProduct = async (id: string, payload: IUpdateProductPayload, user: I
             include: { supplier: true },
         });
 
+        // Selling a product before its purchase rate is known is allowed - those
+        // sale lines are stored with cost_price 0 and simply contribute no
+        // profit. Once a rate is filled in here, backfill exactly those lines so
+        // their profit finally shows up in the dashboard and reports. Lines that
+        // already recorded a cost are left untouched, so historical costs (and
+        // FIFO-derived ones) stay accurate.
+        const newCost = Number(updated.cost_price ?? 0);
+        if (newCost > 0) {
+            await tx.saleItem.updateMany({
+                where: { owner_id: user.ownerId, product_id: id, cost_price: 0 },
+                data: { cost_price: newCost },
+            });
+        }
+
         // If opening qty changed, sync the opening stock batch + inventory level.
         if (payload.opening_qty !== undefined && payload.opening_qty !== existing.opening_qty) {
             const delta = payload.opening_qty - existing.opening_qty;
