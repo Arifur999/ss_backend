@@ -229,11 +229,28 @@ const resetOwnerData = async (ownerId: string, password: string, admin: IRequest
     return { message: "Owner data reset successfully. Their plan stays active." };
 };
 
+// Includes the owner's contact details so the payments page can show who to
+// call about a pending transaction without a second lookup.
 const getAllPayments = async () => {
     return prisma.subscriptionPayment.findMany({
         include: {
             owner: {
-                select: { id: true, email: true, full_name: true, subscription: { select: { business_name: true } } },
+                select: {
+                    id: true,
+                    email: true,
+                    full_name: true,
+                    phone: true,
+                    created_at: true,
+                    subscription: {
+                        select: {
+                            business_name: true,
+                            address: true,
+                            plan_type: true,
+                            plan_status: true,
+                            expiry_date: true,
+                        },
+                    },
+                },
             },
         },
         orderBy: { date: "desc" },
