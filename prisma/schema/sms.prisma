@@ -69,3 +69,20 @@ model SmsMessage {
   @@index([owner_id])
   @@map("sms_messages")
 }
+
+// Phone numbers the owner types in by hand on the Marketing page - people who
+// are not customers, suppliers or employees, but should still receive
+// campaigns. Shown in the composer under "Contact list".
+model MarketingContact {
+  id         String   @id @default(uuid())
+  owner_id   String
+  name       String   @default("")
+  phone      String   @default("")
+  note       String   @default("")
+  created_at DateTime @default(now())
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@map("marketing_contacts")
+}

@@ -13,6 +13,7 @@ import { InventoryRoutes } from "../module/inventory/inventory.route.js";
 import { InvestmentRoutes } from "../module/investment/investment.route.js";
 import { LoanRoutes } from "../module/loan/loan.route.js";
 import { LoanLenderRoutes } from "../module/loanLender/loanLender.route.js";
+import { MarketingContactRoutes } from "../module/marketingContact/marketingContact.route.js";
 import { MonthlyTargetRoutes } from "../module/monthlyTarget/monthlyTarget.route.js";
 import { NotificationRoutes } from "../module/notification/notification.route.js";
 import { OtherIncomeRoutes } from "../module/otherIncome/otherIncome.route.js";
@@ -67,6 +68,7 @@ router.use("/recycle-bin", RecycleBinRoutes);
 router.use("/uploads", UploadRoutes);
 router.use("/platform-settings", PlatformSettingsRoutes);
 router.use("/sms", SmsRoutes);
+router.use("/marketing-contacts", MarketingContactRoutes);
 router.use("/notifications", NotificationRoutes);
 
 export const indexRoute = router;
