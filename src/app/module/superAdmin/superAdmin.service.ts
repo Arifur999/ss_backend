@@ -6,6 +6,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { sendTemplatedEmail } from "../../utils/email.js";
+import { planSmsCredits } from "../../utils/smsGrants.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
 
 // Owner list with profile + subscription, shaped like the old superAdminLive loader.
@@ -290,6 +291,28 @@ const updatePayment = async (
                     blocked_reason: "",
                 },
             });
+
+            // Bundled SMS credits, granted only on the owner's FIRST approved
+            // payment for this plan - renewals don't top the wallet up again.
+            const credits = planSmsCredits(nextPayment.plan_type);
+            if (credits > 0) {
+                const earlierPaid = await tx.subscriptionPayment.count({
+                    where: {
+                        owner_id: payment.owner_id,
+                        plan_type: nextPayment.plan_type,
+                        status: "paid",
+                        id: { not: nextPayment.id },
+                    },
+                });
+
+                if (earlierPaid === 0) {
+                    await tx.smsWallet.upsert({
+                        where: { owner_id: payment.owner_id },
+                        create: { owner_id: payment.owner_id, balance: credits },
+                        update: { balance: { increment: credits } },
+                    });
+                }
+            }
         }
 
         return nextPayment;

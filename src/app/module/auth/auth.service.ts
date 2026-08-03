@@ -6,6 +6,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
+import { SIGNUP_SMS_CREDITS } from "../../utils/smsGrants.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
@@ -99,6 +100,11 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
                 // free-trial card popup on /choose-plan.
                 trial_used: false,
             },
+        });
+
+        // Welcome credits: the owner can try SMS out before buying a package.
+        await tx.smsWallet.create({
+            data: { owner_id: user.id, balance: SIGNUP_SMS_CREDITS },
         });
 
         return { user: updatedUser, subscription };
