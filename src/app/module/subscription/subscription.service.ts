@@ -20,8 +20,32 @@ const addMonths = (date: Date, months: number) => {
     return next;
 };
 
+// Returns the subscription plus any payment still awaiting super-admin
+// approval. The pending payment is what lets the checkout / plans screens show
+// "waiting for approval" instead of the plan cards after a page reload - the
+// state lives on the server, not in localStorage.
 const getMySubscription = async (user: IRequestUser) => {
-    return checkOwnerSubscriptionExpiry(user.ownerId);
+    const subscription = await checkOwnerSubscriptionExpiry(user.ownerId);
+    if (!subscription) return null;
+
+    const pendingPayment = await prisma.subscriptionPayment.findFirst({
+        where: { owner_id: user.ownerId, status: "pending" },
+        orderBy: { created_at: "desc" },
+    });
+
+    return {
+        ...subscription,
+        pending_payment: pendingPayment
+            ? {
+                id: pendingPayment.id,
+                invoice_no: pendingPayment.invoice_no,
+                plan_type: pendingPayment.plan_type,
+                amount: pendingPayment.amount,
+                trx_id: pendingPayment.trx_id,
+                submitted_at: pendingPayment.created_at,
+            }
+            : null,
+    };
 };
 
 // Mirrors the old SubscriptionPlans.choosePlan supabase upsert:

@@ -26,9 +26,10 @@ model User {
   subscription          OwnerSubscription?
   subscription_payments SubscriptionPayment[]
 
-  sms_wallet    SmsWallet?
-  sms_purchases SmsPurchase[]
-  sms_messages  SmsMessage[]
+  sms_wallet          SmsWallet?
+  sms_purchases       SmsPurchase[]
+  sms_messages        SmsMessage[]
+  marketing_contacts  MarketingContact[]
 
   @@index([owner_id])
   @@map("users")
@@ -112,6 +113,10 @@ model PlatformSetting {
   // Monthly plan price (no yearly discount). Charged when an owner picks the
   // monthly plan from the Current Plan / choose-plan cards.
   monthly_price Decimal @default(600) @db.Decimal(15, 2)
+
+  // Hotline shown to an owner while their manual payment awaits approval, so
+  // they know who to call if activation is taking too long.
+  support_number String @default("")
 
   // Expiry reminder email template. Supports {{name}}, {{business_name}},
   // {{days_left}}, {{expiry_date}}, {{plan}} placeholders - see

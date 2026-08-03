@@ -30,6 +30,7 @@ const getPaymentInfo = async () => {
         yearly_price: settings.yearly_price,
         yearly_original_price: settings.yearly_original_price,
         monthly_price: settings.monthly_price,
+        support_number: settings.support_number,
     };
 };
 

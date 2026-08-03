@@ -9,6 +9,7 @@ export const updatePlatformSettingsZodSchema = z.object({
     yearly_price: z.number("Yearly price must be a number").positive("Yearly price must be positive").optional(),
     yearly_original_price: z.number("Original price must be a number").positive("Original price must be positive").optional(),
     monthly_price: z.number("Monthly price must be a number").positive("Monthly price must be positive").optional(),
+    support_number: z.string("Support number must be string").optional(),
     reminder_subject: z.string("Reminder subject must be string").min(1, "Subject cannot be empty").optional(),
     reminder_body: z.string("Reminder body must be string").min(1, "Body cannot be empty").optional(),
 });
