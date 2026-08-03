@@ -15,6 +15,16 @@ const getMySubscription = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getMyPayments = catchAsync(async (req: Request, res: Response) => {
+    const result = await SubscriptionService.getMyPayments(req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Payments retrieved successfully",
+        data: result,
+    });
+});
+
 const choosePlan = catchAsync(async (req: Request, res: Response) => {
     const result = await SubscriptionService.choosePlan(req.body, req.user as IRequestUser);
     sendResponse(res, {
@@ -37,6 +47,7 @@ const submitManualPayment = catchAsync(async (req: Request, res: Response) => {
 
 export const SubscriptionController = {
     getMySubscription,
+    getMyPayments,
     choosePlan,
     submitManualPayment,
 };

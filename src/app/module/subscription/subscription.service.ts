@@ -127,6 +127,15 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     return subscription;
 };
 
+// Every plan payment this owner has ever submitted - the plan half of their
+// billing history page. (The SMS half comes from the sms module.)
+const getMyPayments = async (user: IRequestUser) => {
+    return prisma.subscriptionPayment.findMany({
+        where: { owner_id: user.ownerId },
+        orderBy: { created_at: "desc" },
+    });
+};
+
 // Step 2 of the manual bKash checkout: the owner has already sent money to
 // the platform's bKash number (shown on the checkout page) and now submits
 // the number they paid FROM plus the bKash transaction id, for a super admin
@@ -214,6 +223,7 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
 
 export const SubscriptionService = {
     getMySubscription,
+    getMyPayments,
     choosePlan,
     submitManualPayment,
 };
