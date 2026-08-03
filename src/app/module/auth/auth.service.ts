@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import status from "http-status";
+import { env } from "../../../config/env.js";
 import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
@@ -129,6 +130,41 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
     };
 };
 
+// Builds the logged-in payload (profile + subscription + tokens) for a user.
+// Shared by the OTP step and, when the OTP gate is switched off, by login.
+//
+// Never blocks on subscription status: pending / expired / blocked owners all
+// sign in, and the frontend's ProtectedRoute shows the matching lock screen
+// (expired owners are sent to checkout so they can pay again).
+const issueSession = async (user: {
+    id: string; email: string; full_name: string; role: Role;
+    owner_id: string | null; phone: string; is_active: boolean;
+    email_verified: boolean; branch_id: string | null;
+    last_active: Date | null; created_at: Date; updated_at: Date; password: string;
+}) => {
+    let subscription = null;
+    if (user.role !== Role.super_admin) {
+        subscription = await checkOwnerSubscriptionExpiry(user.owner_id ?? user.id);
+    }
+
+    if (user.role === Role.owner) {
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { last_active: new Date() },
+        });
+    }
+
+    const tokenPayload = buildTokenPayload(user);
+
+    return {
+        user: { id: user.id, email: user.email },
+        profile: toProfile(user),
+        subscription,
+        accessToken: tokenUtils.getAccessToken(tokenPayload),
+        refreshToken: tokenUtils.getRefreshToken(tokenPayload),
+    };
+};
+
 // Step 2 of registration (and of unverified logins): the user submits the
 // 6-digit code from their inbox. On success we flag the account verified and
 // issue the auth cookies - this IS the login.
@@ -150,21 +186,8 @@ const verifyEmailOtp = async (email: string, code: string) => {
         data: { email_verified: true },
     });
 
-    let subscription = null;
-    if (verifiedUser.role !== Role.super_admin) {
-        subscription = await checkOwnerSubscriptionExpiry(verifiedUser.owner_id ?? verifiedUser.id);
-    }
-
-    // Verified -> issue tokens exactly like a successful login.
-    const tokenPayload = buildTokenPayload(verifiedUser);
-
-    return {
-        user: { id: verifiedUser.id, email: verifiedUser.email },
-        profile: toProfile(verifiedUser),
-        subscription,
-        accessToken: tokenUtils.getAccessToken(tokenPayload),
-        refreshToken: tokenUtils.getRefreshToken(tokenPayload),
-    };
+    // Code accepted -> this is the moment a session actually starts.
+    return issueSession(verifiedUser);
 };
 
 // Re-send the verification code (60s cooldown enforced inside otpUtils).
@@ -177,10 +200,8 @@ const resendVerificationOtp = async (email: string) => {
         throw new AppError(status.NOT_FOUND, "No account found with this email");
     }
 
-    if (user.email_verified) {
-        throw new AppError(status.BAD_REQUEST, "This email is already verified. Please log in.");
-    }
-
+    // No "already verified" rejection: verified accounts still need a code on
+    // every login, so resend has to work for them too.
     await otpUtils.resendOtp(normalizedEmail, user.full_name);
 
     return { sent: true, email: normalizedEmail };
@@ -245,58 +266,32 @@ const loginUser = async (payload: ILoginPayload) => {
         throw new AppError(status.FORBIDDEN, "Your account has been deactivated. Please contact your owner or administrator.");
     }
 
-    // Email verification gate at login:
-    // password was correct, but the email was never verified (e.g. the user
-    // closed the tab during registration). We send a fresh OTP and tell the
-    // frontend to show the verification screen instead of logging in.
-    if (!user.email_verified && user.role !== Role.super_admin) {
-        try {
-            await otpUtils.issueOtp(user.email, user.full_name);
-        } catch (error) {
-            // Cooldown or mail issues must not block the response - the
-            // frontend still needs to show the OTP screen with a resend button.
-            console.error("[otp] Could not auto-send login OTP:", error);
-        }
-
-        return {
-            needsEmailConfirmation: true as const,
-            email: user.email,
-        };
+    // Break-glass: if the mail provider ever goes down, every account would be
+    // locked out with no way back in. Setting LOGIN_OTP_ENABLED=false on the
+    // server restores password-only login without needing a code change.
+    // Unverified accounts still have to confirm their email.
+    if (!env.LOGIN_OTP_ENABLED && user.email_verified) {
+        return issueSession(user);
     }
 
-    let subscription = null;
-
-    // Login only checks credentials - it must never block on subscription
-    // status. Pending / expired / suspended / blocked owners all sign in
-    // successfully here; ProtectedRoute on the frontend reads `subscription`
-    // and shows the matching lock screen (for "expired" specifically, that
-    // screen sends the owner straight to the payment page). Blocking login
-    // here instead would strand an expired owner with no way to ever reach
-    // checkout and pay again.
-    if (user.role !== Role.super_admin) {
-        const ownerId = user.owner_id ?? user.id;
-        subscription = await checkOwnerSubscriptionExpiry(ownerId);
+    // Two-factor gate: the password alone never logs anyone in. Every sign-in
+    // mails a fresh 6-digit code, and tokens are only issued once that code is
+    // submitted to verifyEmailOtp. This also covers the old "email was never
+    // verified" case - that same step marks the account verified.
+    try {
+        await otpUtils.issueOtp(user.email, user.full_name);
+    } catch (error) {
+        // Mail issues must not block the response - the frontend still needs to
+        // show the OTP screen with a resend button.
+        console.error("[otp] Could not auto-send login OTP:", error);
     }
-
-    if (user.role === Role.owner) {
-        await prisma.user.update({
-            where: { id: user.id },
-            data: { last_active: new Date() },
-        });
-    }
-
-    const tokenPayload = buildTokenPayload(user);
-    const accessToken = tokenUtils.getAccessToken(tokenPayload);
-    const refreshToken = tokenUtils.getRefreshToken(tokenPayload);
 
     return {
-        user: { id: user.id, email: user.email },
-        profile: toProfile(user),
-        subscription,
-        accessToken,
-        refreshToken,
+        needsEmailConfirmation: true as const,
+        email: user.email,
     };
 };
+
 
 const getMe = async (requestUser: IRequestUser) => {
     const user = await prisma.user.findUnique({

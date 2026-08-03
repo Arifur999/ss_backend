@@ -25,19 +25,21 @@ const registerOwner = catchAsync(async (req: Request, res: Response) => {
 const loginUser = catchAsync(async (req: Request, res: Response) => {
     const result = await AuthService.loginUser(req.body);
 
-    // Unverified account: correct password, but the email OTP was never
-    // confirmed. A fresh code has been sent - no cookies are issued yet.
+    // Normal path: the password alone never starts a session. A fresh 6-digit
+    // code has been emailed; cookies are only issued once it is submitted to
+    // /verify-otp.
     if ("needsEmailConfirmation" in result) {
         sendResponse(res, {
             success: true,
             httpStatus: status.OK,
-            message: "Please verify your email - a new code has been sent",
+            message: "A verification code has been sent to your email",
             data: result, // { needsEmailConfirmation: true, email }
         });
         return;
     }
 
-    // Fully verified account: issue the httpOnly auth cookie pair.
+    // Only reached when the login OTP gate is switched off (LOGIN_OTP_ENABLED
+    // =false): log straight in with the httpOnly cookie pair.
     cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
 
     sendResponse(res, {

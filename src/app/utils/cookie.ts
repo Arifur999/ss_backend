@@ -21,7 +21,9 @@ const setAuthCookies = (res: Response, accessToken: string, refreshToken: string
     });
     res.cookie("refreshToken", refreshToken, {
         ...baseOptions,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        // Matches the refresh token's own 1-day lifetime, so the session ends
+        // a day after sign-in and a fresh emailed code is required.
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 };
 

@@ -10,6 +10,10 @@ interface ENVConfig {
     REFRESH_TOKEN_SECRET: string;
     ACCESS_TOKEN_EXPIRES_IN: string;
     REFRESH_TOKEN_EXPIRES_IN: string;
+    // Email one-time-code required on every login. Defaults on; set
+    // LOGIN_OTP_ENABLED=false to fall back to password-only login if the mail
+    // provider is down and users would otherwise be locked out.
+    LOGIN_OTP_ENABLED: boolean;
     FRONTEND_URL: string;
     SUPER_ADMIN_EMAIL: string;
     SUPER_ADMIN_PASSWORD: string;
@@ -81,8 +85,12 @@ export const env: ENVConfig = {
     DATABASE_URL: process.env.DATABASE_URL as string,
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET as string,
     REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET as string,
+    // Sessions last one day: both tokens die together 24h after sign-in, so
+    // everyone is logged out daily and has to re-authenticate with a fresh
+    // emailed code. (Set the env vars only if you deliberately want longer.)
     ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN || "1d",
-    REFRESH_TOKEN_EXPIRES_IN: process.env.REFRESH_TOKEN_EXPIRES_IN || "7d",
+    REFRESH_TOKEN_EXPIRES_IN: process.env.REFRESH_TOKEN_EXPIRES_IN || "1d",
+    LOGIN_OTP_ENABLED: process.env.LOGIN_OTP_ENABLED !== "false",
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
     SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL as string,
     SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD as string,
