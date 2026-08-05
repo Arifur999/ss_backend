@@ -118,27 +118,41 @@ In Hostinger DNS for `cosmeticdentalbranding.com`, replace the existing records:
 | A    | `@`   | your VPS IP |
 | A    | `www` | your VPS IP |
 
-Wait until `dig +short cosmeticdentalbranding.com` returns the VPS IP, then open
-`http://cosmeticdentalbranding.com` — the site should load over plain HTTP.
+Delete whatever pointed the domain at the old shared hosting (an `ALIAS`/`CNAME`
+to `*.hstgr.net`, an `ftp` A record) but **keep every email record** — the
+`resend._domainkey` and `_dmarc` TXT records and the `send` TXT/MX pair are what
+make the login codes arrive instead of landing in spam. Never use the panel's
+"Reset DNS records" button; it removes those too.
+
+Wait until `dig +short cosmeticdentalbranding.com` returns the VPS IP.
 
 ---
 
-## 6. Turn on HTTPS
+## 6. HTTPS
+
+`nginx.conf` expects the certificate to exist — nginx refuses to start with an
+`ssl_certificate` it cannot read, so on a **brand-new** server issue the
+certificate before bringing nginx up with this config:
 
 ```bash
 cd /srv/hatim/hatim_Backend
-docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
+docker compose run --rm -p 80:80 certbot certonly --standalone \
   -d cosmeticdentalbranding.com -d www.cosmeticdentalbranding.com \
   --email hatimsasseee@gmail.com --agree-tos --no-eff-email
+docker compose up -d
 ```
 
-Once that succeeds, open `nginx.conf`, uncomment the Phase 2 block **and** the
-HTTP→HTTPS redirect line, then `docker compose restart nginx`.
+Once nginx is running, renewals use the webroot instead, so nothing has to stop:
 
-Certificates last 90 days, so schedule renewal — `crontab -e` as deploy:
+```bash
+docker compose run --rm certbot renew && docker compose restart nginx
+```
+
+Certificates last 90 days. Renewal is already scheduled in the `deploy` user's
+crontab (`crontab -l` to see it):
 
 ```
-0 3 * * 1 cd /srv/hatim/hatim_Backend && docker compose run --rm certbot renew && docker compose restart nginx
+0 3 * * 1 cd /srv/hatim/hatim_Backend && docker compose run --rm certbot renew --quiet && docker compose restart nginx
 ```
 
 ---
