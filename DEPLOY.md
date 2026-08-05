@@ -9,29 +9,11 @@ SSH in and update the server. Nothing is uploaded by hand.
 
 ---
 
-## 1. Rescue the Railway data first
+> Starting from an empty database. The old Railway data was test data and is
+> not being migrated, so there is nothing to restore — the first boot creates
+> the schema and the super admin, and you enter real data from there.
 
-Do this **before** anything else — a suspended Railway project can be deleted,
-and this dump is the only copy of the customers, sales and stock.
-
-From your machine, using the Railway `DATABASE_URL` (Railway dashboard →
-Postgres → Variables):
-
-```bash
-pg_dump --no-owner --no-privileges -Fc \
-  "postgresql://USER:PASSWORD@HOST:PORT/DATABASE" \
-  -f hatim-backup.dump
-```
-
-Confirm it is not empty (`ls -lh hatim-backup.dump`) and keep a copy somewhere
-safe. It gets restored in step 5.
-
-> No `pg_dump` locally? Install the PostgreSQL client tools, or run it from the
-> VPS after step 2 using the `postgres:16-alpine` image.
-
----
-
-## 2. Prepare the VPS
+## 1. Prepare the VPS
 
 SSH in as root and install Docker:
 
@@ -56,7 +38,7 @@ ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw --force enable
 
 ---
 
-## 3. Clone both repos as siblings
+## 2. Clone both repos as siblings
 
 The compose file mounts `../Hatim/dist`, so these folder names matter:
 
@@ -70,7 +52,7 @@ mkdir -p Hatim/dist        # CI fills this on the first frontend deploy
 
 ---
 
-## 4. Write the backend `.env`
+## 3. Write the backend `.env`
 
 `/srv/hatim/hatim_Backend/.env` — never committed:
 
@@ -89,11 +71,11 @@ SUPER_ADMIN_PASSWORD=<your password>
 
 FRONTEND_URL=https://cosmeticdentalbranding.com
 
-RESEND_API_KEY=<from Railway>
-RESEND_FROM_EMAIL=<from Railway>
-CLOUDINARY_CLOUD_NAME=<from Railway>
-CLOUDINARY_API_KEY=<from Railway>
-CLOUDINARY_API_SECRET=<from Railway>
+RESEND_API_KEY=<your key>
+RESEND_FROM_EMAIL=<your key>
+CLOUDINARY_CLOUD_NAME=<your key>
+CLOUDINARY_API_KEY=<your key>
+CLOUDINARY_API_SECRET=<your key>
 MRAM_API_KEY=<your MRAM key>
 MRAM_SENDER_ID=<your approved sender id>
 ```
@@ -103,7 +85,7 @@ good secret. Then lock the file down: `chmod 600 .env`.
 
 ---
 
-## 5. First start, then restore the data
+## 4. First start
 
 ```bash
 cd /srv/hatim/hatim_Backend
@@ -111,25 +93,23 @@ docker compose up -d --build
 docker compose logs -f backend      # Ctrl-C once the server has started
 ```
 
-The container runs `prisma migrate deploy` on start, so the schema builds
-itself. Now restore the dump from step 1 (send it up with
-`scp hatim-backup.dump deploy@<VPS_IP>:/srv/hatim/`):
+The container runs `prisma migrate deploy` on start, so every table is created
+on this first boot, and the super admin from `SUPER_ADMIN_EMAIL` /
+`SUPER_ADMIN_PASSWORD` is seeded. Nothing else to load — the database starts
+empty and you enter real data through the app.
+
+Check it came up:
 
 ```bash
-docker compose cp /srv/hatim/hatim-backup.dump postgres:/tmp/backup.dump
-docker compose exec postgres pg_restore \
-  --no-owner --no-privileges --data-only --disable-triggers \
-  -U hatim -d furniture_business /tmp/backup.dump
-docker compose restart backend
+docker compose ps                          # all three services "Up"
+curl -s -o /dev/null -w "%{http_code}\n" localhost/api/v1/auth/me   # expect 401
 ```
 
-`--data-only` is deliberate: Prisma already created the schema, so only rows
-are loaded. If it reports rows that already exist, the tables were not empty —
-check before re-running.
+`401` is the healthy answer: the route exists and is asking for a login.
 
 ---
 
-## 6. Point the domain at the VPS
+## 5. Point the domain at the VPS
 
 In Hostinger DNS for `cosmeticdentalbranding.com`, replace the existing records:
 
@@ -143,7 +123,7 @@ Wait until `dig +short cosmeticdentalbranding.com` returns the VPS IP, then open
 
 ---
 
-## 7. Turn on HTTPS
+## 6. Turn on HTTPS
 
 ```bash
 cd /srv/hatim/hatim_Backend
@@ -163,7 +143,7 @@ Certificates last 90 days, so schedule renewal — `crontab -e` as deploy:
 
 ---
 
-## 8. Wire up automatic deploys
+## 7. Wire up automatic deploys
 
 On the VPS, create the key GitHub will use:
 
