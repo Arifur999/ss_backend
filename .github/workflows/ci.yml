@@ -77,14 +77,19 @@ jobs:
              docker compose up -d --build
              docker image prune -f'
 
+      # Asked from inside the server, through nginx on localhost. That checks
+      # the thing this job actually changed - the containers - without
+      # depending on DNS or a certificate, so it works the same before and
+      # after the domain goes live.
       - name: Verify the API answers
         run: |
-          sleep 15
-          for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.DEPLOY_HEALTH_HOST }}/api/v1/auth/me" || true)
-            # 401 is the healthy answer here: the route exists and is guarded.
-            if [ "$code" = "401" ]; then echo "API is up (HTTP $code)"; exit 0; fi
-            echo "waiting for the API... (got $code)"; sleep 10
-          done
-          echo "API did not come up - check: docker compose logs backend"
-          exit 1
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.VPS_SSH_PORT || 22 }}" \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'for i in $(seq 1 12); do
+               code=$(curl -s -o /dev/null -w "%{http_code}" localhost/api/v1/auth/me || true)
+               # 401 is the healthy answer here: the route exists and is guarded.
+               if [ "$code" = "401" ]; then echo "API is up (HTTP $code)"; exit 0; fi
+               echo "waiting for the API... (got $code)"; sleep 10
+             done
+             echo "API did not come up - check: docker compose logs backend"
+             exit 1'
