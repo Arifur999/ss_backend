@@ -57,12 +57,20 @@ jobs:
       - name: Authorise SSH to the VPS
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          # tr -d '\r': a key copied on Windows carries CRLF line endings, and
+          # OpenSSH rejects the file outright - before opening any connection,
+          # so the server logs nothing and the failure looks like a network
+          # problem further down.
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           # Pinning the host key stops a man-in-the-middle from receiving the
           # deploy; VPS_SSH_KNOWN_HOSTS comes from `ssh-keyscan <host>`.
-          echo "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" | tr -d '\r' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          # Say so here, plainly, rather than failing later with something that
+          # reads like the server is unreachable.
+          ssh-keygen -y -P "" -f ~/.ssh/id_ed25519 > /dev/null 2>&1 \
+            || { echo "::error::VPS_SSH_KEY is not a usable private key. Copy it again in full, including the -----BEGIN and -----END lines."; exit 1; }
 
       # Rebuilds the backend image and restarts it. The container itself runs
       # `prisma migrate deploy` on start, so schema changes apply here too.
