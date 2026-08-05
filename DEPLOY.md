@@ -180,10 +180,14 @@ Add these to **both** repos (Settings → Secrets and variables → Actions):
 | `VPS_APP_DIR`         | `/srv/hatim`                                    |
 | `VPS_SSH_PORT`        | only if SSH is not on port 22                   |
 
-The same five secrets go in both repos. Each workflow ends by asking nginx on
-the server's own localhost whether the app answers, so nothing here depends on
-the domain resolving or a certificate existing — the deploys work before DNS is
-switched over and keep working afterwards.
+The same five secrets go in both repos. Each workflow ends by fetching
+`https://cosmeticdentalbranding.com` the way a customer would, so a green deploy
+means DNS, the certificate, nginx and the container are all actually working.
+
+Everything under `/srv/hatim` must stay owned by `deploy` — that is the user CI
+logs in as. Running `git` or a build there as root leaves root-owned files
+behind and the next deploy fails on permissions; `chown -R deploy:deploy
+/srv/hatim` puts it right.
 
 From then on every push to `main` type-checks, lints and builds; only if that
 passes does GitHub update the server — the backend rebuilds its image and runs
