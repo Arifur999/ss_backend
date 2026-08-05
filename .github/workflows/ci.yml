@@ -40,3 +40,51 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t backend-ci-check .
+
+  # Ships to the VPS only after quality-check is green, and only for pushes to
+  # main (never for pull requests). `needs` is what enforces that order - a red
+  # check leaves the server untouched.
+  deploy:
+    needs: quality-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One deploy at a time; a newer push waits rather than racing an older one
+    # mid-rebuild.
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+    steps:
+      - name: Authorise SSH to the VPS
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Pinning the host key stops a man-in-the-middle from receiving the
+          # deploy; VPS_SSH_KNOWN_HOSTS comes from `ssh-keyscan <host>`.
+          echo "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # Rebuilds the backend image and restarts it. The container itself runs
+      # `prisma migrate deploy` on start, so schema changes apply here too.
+      - name: Pull and restart the stack
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.VPS_SSH_PORT || 22 }}" \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'set -e
+             cd ${{ secrets.VPS_APP_DIR }}/hatim_Backend
+             git fetch --all
+             git reset --hard origin/main
+             docker compose up -d --build
+             docker image prune -f'
+
+      - name: Verify the API answers
+        run: |
+          sleep 15
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.DEPLOY_HEALTH_HOST }}/api/v1/auth/me" || true)
+            # 401 is the healthy answer here: the route exists and is guarded.
+            if [ "$code" = "401" ]; then echo "API is up (HTTP $code)"; exit 0; fi
+            echo "waiting for the API... (got $code)"; sleep 10
+          done
+          echo "API did not come up - check: docker compose logs backend"
+          exit 1
