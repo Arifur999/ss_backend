@@ -12,10 +12,20 @@
 # POSTGRES_USER/PASSWORD/DB to, with host "postgres" (the service name
 # below), not "localhost".
 
+# Docker keeps container logs forever by default, and a crash loop writing to
+# stderr can quietly fill the disk until the whole site stops. Capping every
+# service at 3 x 10 MB bounds that.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -33,6 +43,7 @@ services:
   backend:
     build: .
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env
     depends_on:
@@ -45,6 +56,7 @@ services:
   nginx:
     image: nginx:alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"

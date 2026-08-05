@@ -206,8 +206,28 @@ docker compose restart backend     # restart just the API
 docker compose down && docker compose up -d --build   # full rebuild
 ```
 
-Back up the database on a schedule — the VPS is now the only copy:
+## Backups
+
+`scripts/backup-db.sh` dumps the database to `/srv/hatim/backups` and deletes
+dumps older than 14 days. It runs nightly from the deploy user's crontab:
+
+```
+30 2 * * * /srv/hatim/hatim_Backend/scripts/backup-db.sh >> /srv/hatim/backups/backup.log 2>&1
+```
+
+Check it is working — `tail /srv/hatim/backups/backup.log` and `ls -lh
+/srv/hatim/backups`. A dump that comes back empty is deleted rather than kept,
+so a file existing means it has content.
+
+To restore:
 
 ```bash
-docker compose exec postgres pg_dump -U hatim -Fc furniture_business > ~/backup-$(date +%F).dump
+cd /srv/hatim/hatim_Backend
+set -a; . ./.env; set +a
+docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" \
+  -d "$POSTGRES_DB" --clean --if-exists < /srv/hatim/backups/db-YYYY-MM-DD-HHMM.dump
 ```
+
+These dumps sit on the same disk as the database. That covers a bad deploy or a
+deleted record, not the disk itself dying — copy them somewhere else
+(Hostinger snapshots, or `scp` to another machine) for that.
