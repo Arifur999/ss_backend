@@ -3,10 +3,15 @@ import { env } from "../../config/env.js";
 
 const isProduction = env.NODE_ENV === "production";
 
+// SameSite=lax is safe now that nginx serves the SPA and the API from one
+// origin: same-site requests carry the cookie regardless, and refusing to send
+// it from anyone else's page is what stops a cross-site request from acting as
+// the signed-in user. The old "none" was only needed back when the frontend
+// and the API lived on separate domains.
 const baseOptions = {
     httpOnly: true,
     secure: isProduction,
-    sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+    sameSite: "lax" as const,
     path: "/",
 };
 
