@@ -91,8 +91,9 @@ export const sendSms = async (
         }
         // Anything else is treated as success; the body is the SMS Shoot ID.
         return { success: true, error: "", shootId: raw, raw };
-    } catch (err: any) {
-        return { success: false, error: err?.message || "Could not reach the SMS gateway", shootId: "", raw: "" };
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : "";
+        return { success: false, error: reason || "Could not reach the SMS gateway", shootId: "", raw: "" };
     }
 };
 
@@ -104,7 +105,7 @@ export const getMramBalance = async (): Promise<{ success: boolean; balance: num
         const raw = (await res.text()).trim();
         const num = Number(raw.replace(/[^\d.]/g, ""));
         return { success: res.ok, balance: Number.isNaN(num) ? null : num, raw };
-    } catch (err: any) {
-        return { success: false, balance: null, raw: err?.message || "" };
+    } catch (err) {
+        return { success: false, balance: null, raw: err instanceof Error ? err.message : "" };
     }
 };

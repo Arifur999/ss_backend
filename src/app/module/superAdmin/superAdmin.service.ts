@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import status from "http-status";
 import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/enums.js";
+import type { OwnerSubscription, SubscriptionPayment, User } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
@@ -358,8 +359,12 @@ const updatePayment = async (
     return updated;
 };
 
+// What the caller above loads: the owner row plus its subscription, which is
+// where the business name and expiry date on the invoice come from.
+type OwnerWithSubscription = User & { subscription: OwnerSubscription | null };
+
 // Renders the plan-purchase invoice email sent to an owner on approval.
-const buildInvoiceHtml = (owner: any, payment: any) => {
+const buildInvoiceHtml = (owner: OwnerWithSubscription, payment: SubscriptionPayment) => {
     const money = (n: number) => `Tk ${Number(n || 0).toLocaleString("en-US")}`;
     const day = (d?: Date | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-");
     const planLabel = payment.plan_type === "yearly" ? "Yearly plan" : "Monthly plan";

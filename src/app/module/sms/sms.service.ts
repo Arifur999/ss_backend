@@ -1,4 +1,5 @@
 import status from "http-status";
+import type { SmsPurchase, User } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
@@ -298,7 +299,7 @@ const getMasterBalance = async () => {
 };
 
 // Renders the SMS-package purchase invoice email sent to an owner on approval.
-const buildSmsInvoiceHtml = (owner: any, purchase: any) => {
+const buildSmsInvoiceHtml = (owner: User, purchase: SmsPurchase) => {
     const money = (n: number) => `Tk ${Number(n || 0).toLocaleString("en-US")}`;
     const day = (d?: Date | null) =>
         d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
