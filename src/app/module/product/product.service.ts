@@ -138,6 +138,14 @@ const bulkUpsertProducts = async (payloads: ICreateProductPayload[], user: IRequ
         }
 
         return saved;
+    }, {
+        // One lookup plus one write per product, run one after another, so a
+        // full batch is a few hundred round trips. Prisma aborts an interactive
+        // transaction after 5 seconds by default, which a large import can
+        // exceed on a busy server - and the whole batch would then be rolled
+        // back with nothing to show for it.
+        timeout: 120_000,
+        maxWait: 15_000,
     });
 
     return results.map(toSupabaseShape);
