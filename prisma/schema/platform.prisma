@@ -1,0 +1,34 @@
+// The platform's OWN books - what it costs to run this software as a business,
+// and what the operator takes out of it. Deliberately has no owner_id: these
+// rows belong to the platform, not to any customer workspace. Keeping them in
+// separate tables from `Expense` / `ProfitWithdrawal` in finance.prisma is what
+// stops a server bill from ever turning up inside a customer's expense report.
+
+model PlatformExpense {
+  id         String   @id @default(uuid())
+  date       DateTime @default(now()) @db.Date
+  // Free text rather than a lookup table: the list is short and only the
+  // operator sees it, so a whole category CRUD would be more to maintain than
+  // it is worth.
+  category   String   @default("")
+  amount     Decimal  @default(0) @db.Decimal(15, 2)
+  notes      String   @default("")
+  created_by String?
+  created_at DateTime @default(now())
+
+  @@index([date])
+  @@map("platform_expenses")
+}
+
+model PlatformWithdrawal {
+  id         String   @id @default(uuid())
+  date       DateTime @default(now()) @db.Date
+  amount     Decimal  @default(0) @db.Decimal(15, 2)
+  taken_by   String   @default("")
+  notes      String   @default("")
+  created_by String?
+  created_at DateTime @default(now())
+
+  @@index([date])
+  @@map("platform_withdrawals")
+}
