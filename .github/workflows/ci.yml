@@ -83,6 +83,14 @@ jobs:
              git fetch --all
              git reset --hard origin/main
              docker compose up -d --build
+             # nginx.conf is bind-mounted as a single file, which Docker binds
+             # by inode. git reset replaces the file rather than editing it, so
+             # the running container keeps reading the old one and a config
+             # change appears to deploy while doing nothing at all. Recreating
+             # the container is what re-resolves the mount; nginx -t first so a
+             # broken config fails the deploy instead of the site.
+             docker compose up -d --force-recreate nginx
+             docker compose exec -T nginx nginx -t
              docker image prune -f'
 
       # Asked over the public address, the same way a customer reaches it, so
