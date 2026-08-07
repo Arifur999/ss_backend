@@ -25,6 +25,20 @@ const createTransfer = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const updateTransfer = catchAsync(async (req: Request, res: Response) => {
+    const result = await AccountTransferService.updateTransfer(
+        req.params.id as string,
+        req.body,
+        req.user as IRequestUser
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Transfer updated successfully",
+        data: result,
+    });
+});
+
 const deleteTransfer = catchAsync(async (req: Request, res: Response) => {
     const result = await AccountTransferService.deleteTransfer(req.params.id as string, req.user as IRequestUser);
     sendResponse(res, {
@@ -38,5 +52,6 @@ const deleteTransfer = catchAsync(async (req: Request, res: Response) => {
 export const AccountTransferController = {
     getAllTransfers,
     createTransfer,
+    updateTransfer,
     deleteTransfer,
 };

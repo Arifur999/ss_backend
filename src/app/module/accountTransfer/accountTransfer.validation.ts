@@ -10,4 +10,7 @@ export const createAccountTransferZodSchema = z.object({
     notes: z.string("Notes must be string").optional(),
 });
 
+export const updateAccountTransferZodSchema = createAccountTransferZodSchema.partial();
+
 export type ICreateAccountTransferPayload = z.infer<typeof createAccountTransferZodSchema>;
+export type IUpdateAccountTransferPayload = z.infer<typeof updateAccountTransferZodSchema>;
