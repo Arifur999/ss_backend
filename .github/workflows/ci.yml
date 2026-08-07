@@ -35,6 +35,12 @@ jobs:
       - name: Lint
         run: npx eslint . --ext .ts
 
+      # listQuery.test.ts pins down the server half of what a search means -
+      # a literal contains with LIKE's wildcards escaped - so it keeps
+      # agreeing with the browser's rules rather than drifting into SQL's.
+      - name: Tests
+        run: npm test
+
       - name: Build (compiles TypeScript)
         run: npm run build
 

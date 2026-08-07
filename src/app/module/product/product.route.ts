@@ -9,6 +9,10 @@ import { bulkUpsertProductsZodSchema, createProductZodSchema, updateProductZodSc
 const router = Router();
 
 router.get("/", checkAuth(), checkSubscription, ProductController.getAllProducts);
+// Small companions to the paged list: the Category suggestions and the ids of
+// everything matching a search, which "select all" and CSV export need.
+router.get("/categories", checkAuth(), checkSubscription, ProductController.getProductCategories);
+router.get("/ids", checkAuth(), checkSubscription, ProductController.getProductIds);
 router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(createProductZodSchema), ProductController.createProduct);
 router.post("/bulk-upsert", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(bulkUpsertProductsZodSchema), ProductController.bulkUpsertProducts);
 router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updateProductZodSchema), ProductController.updateProduct);

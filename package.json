@@ -16,7 +16,8 @@
     "push": "prisma db push",
     "seed": "tsx src/app/utils/seed.ts",
     "google:token": "tsx scripts/googleRefreshToken.ts",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",

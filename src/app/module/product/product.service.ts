@@ -3,6 +3,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
+import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
 
 // Supabase joins returned the relation under the table name ("suppliers"),
@@ -67,16 +68,88 @@ const bootstrapProductInventory = async (
     }
 };
 
-const getAllProducts = async (user: IRequestUser, includeDeleted = false) => {
-    const products = await prisma.product.findMany({
+// Paging and search are opt-in: with no `limit` this returns the whole list
+// exactly as it always has, so callers that have not moved over are untouched.
+// The search deliberately mirrors the browser's - a literal, case-insensitive
+// "contains" over code and name, with LIKE's wildcards escaped so typing "50%"
+// looks for those three characters.
+const getAllProducts = async (
+    user: IRequestUser,
+    includeDeleted = false,
+    options: ListOptions = {}
+) => {
+    const where: Prisma.ProductWhereInput = {
+        owner_id: user.ownerId,
+        ...(includeDeleted ? { deleted_at: { not: null } } : { deleted_at: null }),
+        ...(options.search
+            ? {
+                OR: [
+                    { product_code: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                    { name: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                ],
+            }
+            : {}),
+    };
+
+    const slice = pageSlice(options);
+
+    if (!slice) {
+        const products = await prisma.product.findMany({
+            where,
+            include: { supplier: true },
+            orderBy: { created_at: "desc" },
+        });
+        return { rows: products.map(toSupabaseShape), total: products.length };
+    }
+
+    const [products, total] = await Promise.all([
+        prisma.product.findMany({
+            where,
+            include: { supplier: true },
+            orderBy: { created_at: "desc" },
+            skip: slice.skip,
+            take: slice.take,
+        }),
+        prisma.product.count({ where }),
+    ]);
+
+    return { rows: products.map(toSupabaseShape), total };
+};
+
+// Just the distinct categories in use, for the Category suggestion box. The
+// page used to derive these from the whole product list it happened to have
+// loaded; once it only holds one page, that no longer works.
+const getProductCategories = async (user: IRequestUser) => {
+    const rows = await prisma.product.findMany({
+        where: { owner_id: user.ownerId, deleted_at: null, NOT: { category: null } },
+        select: { category: true },
+        distinct: ["category"],
+        orderBy: { category: "asc" },
+    });
+    return rows.map((row) => (row.category ?? "").trim()).filter(Boolean);
+};
+
+// Every id matching a search, and nothing else. "Select all" and CSV export
+// act on the whole filtered set, not just the rows on screen, so they need
+// this rather than a page of full records.
+const getProductIds = async (user: IRequestUser, options: ListOptions = {}) => {
+    const rows = await prisma.product.findMany({
         where: {
             owner_id: user.ownerId,
-            ...(includeDeleted ? { deleted_at: { not: null } } : { deleted_at: null }),
+            deleted_at: null,
+            ...(options.search
+                ? {
+                    OR: [
+                        { product_code: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                        { name: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                    ],
+                }
+                : {}),
         },
-        include: { supplier: true },
+        select: { id: true },
         orderBy: { created_at: "desc" },
     });
-    return products.map(toSupabaseShape);
+    return rows.map((row) => row.id);
 };
 
 const createProduct = async (payload: ICreateProductPayload, user: IRequestUser) => {
@@ -284,6 +357,8 @@ const deleteProduct = async (id: string, user: IRequestUser) => {
 
 export const ProductService = {
     getAllProducts,
+    getProductCategories,
+    getProductIds,
     createProduct,
     bulkUpsertProducts,
     updateProduct,
