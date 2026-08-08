@@ -1,7 +1,9 @@
 import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { adjustInventoryLevel } from "./fifo.helpers.js";
 import { IAdjustInventoryPayload } from "./inventory.validation.js";
 
@@ -11,6 +13,147 @@ const toSupabaseShape = (row: any) => {
     if (!row) return row;
     const { product, ...rest } = row;
     return { ...rest, products: product ?? null };
+};
+
+// One page of the stock list, with every quantity worked out in SQL.
+//
+// The page used to do this in the browser: it pulled products, inventory,
+// inventory_history, purchase_items, purchase_receives, sale_items and
+// inventory_batches in full, then joined them by hand. That is six tables and
+// several megabytes to show forty rows, and it cannot survive ten thousand
+// products.
+//
+// The arithmetic below is a transcription of what that code did, kept
+// deliberately literal so the figures do not move:
+//
+//   order     = sum of purchase_items.qty
+//   received  = sum of GREATEST(purchase_items.received_qty, sum of its receives)
+//   upcoming  = sum of GREATEST(0, qty - received)      (per purchase item)
+//   sales     = sum of sale_items.qty
+//   opening   = GREATEST(products.opening_qty, opening-stock batch qty)
+//   available = opening + received + upcoming - sales
+//   dp        = inventory.dp_price, else products.cost_price, else 0
+//   value     = available * dp
+//
+// One thing deliberately NOT carried over: the old code also looked for
+// inventory_history rows with change_type 'opening_stock'. That value is not
+// in the InventoryChangeType enum, so the branch never matched anything - it
+// only cost a full table fetch on every load.
+const inventoryRowsSql = (user: IRequestUser, search: string | undefined, statusFilter: string | undefined) => {
+    const like = search ? `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+
+    return Prisma.sql`
+        WITH base AS (
+            SELECT
+                p.id                AS product_id,
+                p.name              AS product_name,
+                p.product_code      AS product_code,
+                p.image_url         AS image_url,
+                p.cost_price        AS cost_price,
+                p.opening_qty       AS product_opening_qty,
+                s.name              AS supplier_name,
+                s.company_name      AS supplier_company,
+                inv.id              AS inventory_id,
+                inv.dp_price        AS dp_price,
+                COALESCE(batch.opening_qty, 0)   AS batch_opening_qty,
+                COALESCE(po.order_qty, 0)        AS order_qty,
+                COALESCE(po.received_qty, 0)     AS received_qty,
+                COALESCE(po.upcoming_qty, 0)     AS upcoming_qty,
+                COALESCE(si.sales_qty, 0)        AS sales_qty
+            FROM products p
+            LEFT JOIN suppliers s ON s.id = p.supplier_id
+            LEFT JOIN inventory inv ON inv.product_id = p.id AND inv.branch_id IS NULL
+            LEFT JOIN (
+                SELECT product_id, MAX(received_qty) AS opening_qty
+                FROM inventory_batches
+                WHERE source_type = 'opening_stock'
+                GROUP BY product_id
+            ) batch ON batch.product_id = p.id
+            LEFT JOIN (
+                SELECT pi.product_id,
+                       SUM(pi.qty) AS order_qty,
+                       SUM(GREATEST(pi.received_qty, COALESCE(r.received, 0))) AS received_qty,
+                       SUM(GREATEST(0, pi.qty - GREATEST(pi.received_qty, COALESCE(r.received, 0)))) AS upcoming_qty
+                FROM purchase_items pi
+                LEFT JOIN (
+                    SELECT purchase_item_id, SUM(received_qty) AS received
+                    FROM purchase_receives GROUP BY purchase_item_id
+                ) r ON r.purchase_item_id = pi.id
+                GROUP BY pi.product_id
+            ) po ON po.product_id = p.id
+            LEFT JOIN (
+                SELECT product_id, SUM(qty) AS sales_qty FROM sale_items GROUP BY product_id
+            ) si ON si.product_id = p.id
+            WHERE p.owner_id = ${user.ownerId}
+              AND p.deleted_at IS NULL
+              AND p.is_active = true
+              ${like ? Prisma.sql`AND (p.name ILIKE ${like} OR p.product_code ILIKE ${like})` : Prisma.empty}
+        ),
+        computed AS (
+            SELECT *,
+                GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty) AS opening_qty,
+                GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty)
+                    + received_qty + upcoming_qty - sales_qty AS available_qty,
+                COALESCE(dp_price, cost_price, 0) AS unit_dp
+            FROM base
+        )
+        SELECT *, (available_qty * unit_dp) AS stock_value
+        FROM computed
+        ${statusFilter === "available" ? Prisma.sql`WHERE available_qty > 0`
+            : statusFilter === "out_of_stock" ? Prisma.sql`WHERE available_qty <= 0`
+            : statusFilter === "upcoming" ? Prisma.sql`WHERE upcoming_qty > 0`
+            : Prisma.empty}
+    `;
+};
+
+export interface InventoryListOptions extends ListOptions {
+    status?: string;
+}
+
+const getInventoryList = async (user: IRequestUser, options: InventoryListOptions = {}) => {
+    const rows = inventoryRowsSql(user, options.search, options.status);
+    const slice = pageSlice(options);
+
+    // The totals are over every matching row, not the page - a stock value
+    // that only counted the rows scrolled into view would be worse than no
+    // total at all.
+    const [totals] = await prisma.$queryRaw<{ total_rows: bigint; total_value: string | null }[]>(
+        Prisma.sql`SELECT count(*) AS total_rows, COALESCE(SUM(stock_value), 0) AS total_value FROM (${rows}) t`
+    );
+
+    const page = await prisma.$queryRaw<Record<string, unknown>[]>(
+        slice
+            ? Prisma.sql`SELECT * FROM (${rows}) t ORDER BY product_code ASC LIMIT ${slice.take} OFFSET ${slice.skip}`
+            : Prisma.sql`SELECT * FROM (${rows}) t ORDER BY product_code ASC`
+    );
+
+    return {
+        rows: page.map((row) => ({
+            id: row.inventory_id ?? `product:${row.product_id}`,
+            product_id: row.product_id,
+            dp_price: row.dp_price,
+            opening_qty: Number(row.opening_qty ?? 0),
+            order_qty: Number(row.order_qty ?? 0),
+            received_qty: Number(row.received_qty ?? 0),
+            upcoming_qty: Number(row.upcoming_qty ?? 0),
+            sales_qty: Number(row.sales_qty ?? 0),
+            available_qty: Number(row.available_qty ?? 0),
+            fifo_average_dp: Number(row.unit_dp ?? 0),
+            fifo_stock_value: Number(row.stock_value ?? 0),
+            products: {
+                id: row.product_id,
+                name: row.product_name,
+                product_code: row.product_code,
+                image_url: row.image_url,
+                cost_price: row.cost_price,
+                suppliers: row.supplier_name || row.supplier_company
+                    ? { name: row.supplier_name, company_name: row.supplier_company }
+                    : null,
+            },
+        })),
+        total: Number(totals?.total_rows ?? 0),
+        totalStockValue: Number(totals?.total_value ?? 0),
+    };
 };
 
 const getAllInventory = async (user: IRequestUser) => {
@@ -145,6 +288,7 @@ const setDpPrice = async (productId: string, dpPrice: number | null, user: IRequ
 
 export const InventoryService = {
     getAllInventory,
+    getInventoryList,
     getInventoryHistory,
     getInventoryBatches,
     adjustInventory,

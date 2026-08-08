@@ -9,6 +9,8 @@ import { adjustInventoryZodSchema } from "./inventory.validation.js";
 const router = Router();
 
 router.get("/", checkAuth(), checkSubscription, InventoryController.getAllInventory);
+// Paged stock list with every quantity computed in SQL - see the service.
+router.get("/list", checkAuth(), checkSubscription, InventoryController.getInventoryList);
 router.get("/history", checkAuth(), checkSubscription, InventoryController.getInventoryHistory);
 router.get("/batches", checkAuth(), checkSubscription, InventoryController.getInventoryBatches);
 router.post("/adjust", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(adjustInventoryZodSchema), InventoryController.adjustInventory);
