@@ -3,15 +3,20 @@ import status from "http-status";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
 import { sendResponse } from "../../shared/sendResponse.js";
+import { parseListOptions, paginationMeta } from "../../shared/listQuery.js";
 import { SaleService } from "./sale.service.js";
 
 const getAllSales = catchAsync(async (req: Request, res: Response) => {
-    const result = await SaleService.getAllSales(req.user as IRequestUser);
+    const options = parseListOptions(req.query as Record<string, unknown>);
+    const { rows, total, totalNetAmount } = await SaleService.getAllSales(req.user as IRequestUser, options);
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,
         message: "Sales retrieved successfully",
-        data: result,
+        // Array, as before. The ledger total rides in meta so a paged caller
+        // can show a figure covering every matching sale.
+        data: rows,
+        meta: { ...paginationMeta(options, total), totalNetAmount } as never,
     });
 });
 

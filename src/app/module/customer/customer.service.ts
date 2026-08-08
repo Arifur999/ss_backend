@@ -1,14 +1,41 @@
 import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { ICreateCustomerPayload, IUpdateCustomerPayload } from "./customer.validation.js";
 
-const getAllCustomers = async (user: IRequestUser) => {
-    return prisma.customer.findMany({
-        where: { owner_id: user.ownerId, deleted_at: null },
-        orderBy: { created_at: "desc" },
-    });
+// Paging and search are opt-in: without a `limit` this returns everything,
+// exactly as before, so the sale form and anything else reading the full list
+// is untouched. The search matches the browser's - a literal, case-insensitive
+// contains over name and phone, wildcards escaped.
+const getAllCustomers = async (user: IRequestUser, options: ListOptions = {}) => {
+    const where: Prisma.CustomerWhereInput = {
+        owner_id: user.ownerId,
+        deleted_at: null,
+        ...(options.search
+            ? {
+                OR: [
+                    { name: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                    { phone: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                ],
+            }
+            : {}),
+    };
+
+    const slice = pageSlice(options);
+
+    if (!slice) {
+        const rows = await prisma.customer.findMany({ where, orderBy: { created_at: "desc" } });
+        return { rows, total: rows.length };
+    }
+
+    const [rows, total] = await Promise.all([
+        prisma.customer.findMany({ where, orderBy: { created_at: "desc" }, skip: slice.skip, take: slice.take }),
+        prisma.customer.count({ where }),
+    ]);
+    return { rows, total };
 };
 
 const createCustomer = async (payload: ICreateCustomerPayload, user: IRequestUser) => {

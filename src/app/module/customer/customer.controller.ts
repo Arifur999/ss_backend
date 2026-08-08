@@ -3,15 +3,20 @@ import status from "http-status";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
 import { sendResponse } from "../../shared/sendResponse.js";
+import { parseListOptions, paginationMeta } from "../../shared/listQuery.js";
 import { CustomerService } from "./customer.service.js";
 
 const getAllCustomers = catchAsync(async (req: Request, res: Response) => {
-    const result = await CustomerService.getAllCustomers(req.user as IRequestUser);
+    const options = parseListOptions(req.query as Record<string, unknown>);
+    const { rows, total } = await CustomerService.getAllCustomers(req.user as IRequestUser, options);
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,
         message: "Customers retrieved successfully",
-        data: result,
+        // Still a plain array, so a caller that ignores meta sees what it saw
+        // before.
+        data: rows,
+        meta: paginationMeta(options, total),
     });
 });
 

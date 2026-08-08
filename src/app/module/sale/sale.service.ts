@@ -3,6 +3,7 @@ import { DeliveryStatus, Prisma } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { consumeFifoForSaleItem, releaseFifoForSaleItem } from "../inventory/fifo.helpers.js";
 import { ICreateSaleDeliveryPayload, ICreateSalePayload, ISaleItemPayload, ISalePaymentPayload } from "./sale.validation.js";
@@ -15,12 +16,41 @@ const saleInclude = {
     sale_deliveries: true,
 } as const;
 
-const getAllSales = async (user: IRequestUser) => {
-    return prisma.sale.findMany({
-        where: { owner_id: user.ownerId, deleted_at: null },
-        include: saleInclude,
-        orderBy: [{ date: "desc" }, { created_at: "desc" }],
-    });
+// Paging and search are opt-in: without a `limit` this returns every sale,
+// exactly as before, so nothing that reads the full ledger changes.
+//
+// The totals are aggregated over every matching sale, not the page. A ledger
+// that added up only the rows scrolled into view would be worse than showing
+// no total at all - it would look right and be wrong.
+const getAllSales = async (user: IRequestUser, options: ListOptions = {}) => {
+    const where: Prisma.SaleWhereInput = {
+        owner_id: user.ownerId,
+        deleted_at: null,
+        ...(options.search
+            ? {
+                OR: [
+                    { invoice_no: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                    { customer_name: { contains: escapeLikeTerm(options.search), mode: "insensitive" } },
+                ],
+            }
+            : {}),
+    };
+
+    const slice = pageSlice(options);
+    const orderBy: Prisma.SaleOrderByWithRelationInput[] = [{ date: "desc" }, { created_at: "desc" }];
+
+    if (!slice) {
+        const rows = await prisma.sale.findMany({ where, include: saleInclude, orderBy });
+        return { rows, total: rows.length, totalNetAmount: rows.reduce((sum, row) => sum + Number(row.net_amount ?? 0), 0) };
+    }
+
+    const [rows, total, sums] = await Promise.all([
+        prisma.sale.findMany({ where, include: saleInclude, orderBy, skip: slice.skip, take: slice.take }),
+        prisma.sale.count({ where }),
+        prisma.sale.aggregate({ where, _sum: { net_amount: true } }),
+    ]);
+
+    return { rows, total, totalNetAmount: Number(sums._sum.net_amount ?? 0) };
 };
 
 // The old client retried duplicate invoice numbers; the server just finds the
