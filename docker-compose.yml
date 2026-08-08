@@ -32,6 +32,35 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-furniture_business}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Postgres ships with settings sized for a very small machine: 128 MB of
+    # cache and 4 MB of working memory, on a server with 7.8 GB sitting idle.
+    # Every list query was therefore reading from disk that the OS had already
+    # cached, and sorts spilled to temp files far sooner than they needed to.
+    #
+    #   shared_buffers        - Postgres's own cache. A quarter of RAM is the
+    #                           usual starting point.
+    #   effective_cache_size  - not an allocation; it tells the planner how
+    #                           much the OS is likely caching, which is what
+    #                           makes it choose an index over a table scan.
+    #   work_mem              - per sort/hash. Multiplied by concurrent
+    #                           operations, so kept well under the total.
+    #   random_page_cost      - 4 assumes spinning disks; this is an SSD, and
+    #                           leaving it high tells the planner to avoid the
+    #                           very indexes added for these queries.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=4GB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
       interval: 5s
