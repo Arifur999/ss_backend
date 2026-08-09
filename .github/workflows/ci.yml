@@ -105,7 +105,7 @@ jobs:
       - name: Verify the API answers
         run: |
           for i in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://cosmeticdentalbranding.com/api/v1/auth/me || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://furnify.softech.agency/api/v1/auth/me || true)
             # 401 is the healthy answer here: the route exists and is guarded.
             if [ "$code" = "401" ]; then echo "API is up (HTTP $code)"; exit 0; fi
             echo "waiting for the API... (got $code)"; sleep 10
