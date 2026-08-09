@@ -29,6 +29,7 @@ const toProfile = (user: any) => ({
     email: user.email,
     role: user.role,
     phone: user.phone,
+    avatar_url: user.avatar_url,
     branch_id: user.branch_id,
     is_active: user.is_active,
     last_active: user.last_active,

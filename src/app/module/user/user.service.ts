@@ -14,6 +14,7 @@ const toTeamUser = (user: any) => ({
     full_name: user.full_name,
     role: user.role,
     phone: user.phone,
+    avatar_url: user.avatar_url,
     is_active: user.is_active,
     created_at: user.created_at,
 });
@@ -47,6 +48,7 @@ const createTeamUser = async (payload: ICreateTeamUserPayload, user: IRequestUse
             full_name: payload.full_name,
             role: payload.role,
             phone: payload.phone ?? "",
+            avatar_url: payload.avatar_url ?? "",
             owner_id: user.ownerId,
             // Staff accounts are created by their owner who hands them the
             // password directly - no OTP round-trip needed for them.
@@ -75,6 +77,7 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
     if (payload.role !== undefined) data.role = payload.role;
     if (payload.full_name !== undefined) data.full_name = payload.full_name;
     if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.avatar_url !== undefined) data.avatar_url = payload.avatar_url;
     if (payload.is_active !== undefined) data.is_active = payload.is_active;
     if (payload.password !== undefined) data.password = await bcrypt.hash(payload.password, 10);
 

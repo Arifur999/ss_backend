@@ -8,6 +8,8 @@ model User {
   full_name  String    @default("")
   role       Role      @default(owner)
   phone      String    @default("")
+  // Cloudinary URL from POST /uploads/image. Empty means "show initials".
+  avatar_url String    @default("")
   branch_id  String?
   is_active  Boolean   @default(true)
   // SaaS email verification: a user cannot use the app until they confirm
