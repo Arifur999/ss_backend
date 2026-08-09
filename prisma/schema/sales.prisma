@@ -39,6 +39,10 @@ model Sale {
   @@index([date])
   @@index([customer_id])
   @@index([delivery_status])
+  // Every list query is "this owner, newest first" (and often within a date
+  // range). Two separate single-column indexes cannot serve that - Postgres
+  // still has to sort the owner's whole table. This one answers it directly.
+  @@index([owner_id, date(sort: Desc)])
   @@map("sales")
 }
 
@@ -65,6 +69,9 @@ model SaleItem {
 
   @@index([owner_id])
   @@index([sale_id])
+  // Hit by the stock aggregate, the cost-price backfills and the Restrict FK
+  // checked on every product delete - all unindexed before this.
+  @@index([product_id])
   @@map("sale_items")
 }
 
@@ -88,6 +95,7 @@ model SalePayment {
 
   @@index([owner_id])
   @@index([sale_id])
+  @@index([owner_id, date(sort: Desc)])
   @@map("sale_payments")
 }
 
@@ -110,6 +118,8 @@ model SaleDelivery {
   @@index([owner_id])
   @@index([sale_id])
   @@index([delivery_date])
+  // Cascade target: deleting a sale's items probes this once per item.
+  @@index([sale_item_id])
   @@map("sale_deliveries")
 }
 
@@ -136,6 +146,8 @@ model CustomerPayment {
 
   @@index([owner_id])
   @@index([customer_id])
+  @@index([owner_id, date(sort: Desc)])
+  @@index([sale_id])
   @@map("customer_payments")
 }
 
@@ -161,5 +173,6 @@ model SaleItemCostLayer {
   @@index([owner_id])
   @@index([sale_item_id])
   @@index([product_id])
+  @@index([sale_id])
   @@map("sale_item_cost_layers")
 }

@@ -15,6 +15,11 @@ export interface ListOptions {
     page?: number;
     limit?: number;
     search?: string;
+    // Inclusive date bounds, as YYYY-MM-DD. The browser asks for the range it
+    // is about to display; without them a page showing one month still had to
+    // download every row the account has ever had.
+    from?: string;
+    to?: string;
 }
 
 // LIKE treats % and _ as wildcards and \ as the escape character. A term the
@@ -32,12 +37,43 @@ const positiveInt = (value: unknown): number | undefined => {
 // Reads page/limit/search off a request query. Anything unusable is ignored
 // rather than rejected: a bad ?limit must not turn a working list into an
 // error page.
+// Only a plain YYYY-MM-DD is accepted. The date columns are @db.Date, and the
+// frontend always sends this shape; anything else is ignored rather than
+// guessed at, so a malformed param widens the range instead of breaking it.
+const isoDate = (value: unknown): string | undefined => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    // JavaScript rolls impossible dates forward rather than rejecting them -
+    // "2026-02-31" becomes 3 March. Comparing the round trip catches that, so a
+    // typo drops the filter instead of quietly shifting the range.
+    return parsed.toISOString().slice(0, 10) === value ? value : undefined;
+};
+
 export const parseListOptions = (query: Record<string, unknown>): ListOptions => {
     const search = typeof query.search === "string" ? query.search.trim() : "";
     return {
         page: positiveInt(query.page),
         limit: positiveInt(query.limit),
         search: search || undefined,
+        from: isoDate(query.from),
+        to: isoDate(query.to),
+    };
+};
+
+// A Prisma filter for the given column, or undefined when neither bound was
+// supplied - spread into a `where` so an absent range changes nothing:
+//
+//     where: { owner_id, ...dateRangeWhere(options) }
+//
+// Both bounds are inclusive, matching the browser's gte/lte.
+export const dateRangeWhere = (options: ListOptions, column = "date"): Record<string, unknown> => {
+    if (!options.from && !options.to) return {};
+    return {
+        [column]: {
+            ...(options.from ? { gte: new Date(`${options.from}T00:00:00.000Z`) } : {}),
+            ...(options.to ? { lte: new Date(`${options.to}T23:59:59.999Z`) } : {}),
+        },
     };
 };
 

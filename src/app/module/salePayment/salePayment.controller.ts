@@ -2,13 +2,15 @@ import { Request, Response } from "express";
 import status from "http-status";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
+import { parseListOptions } from "../../shared/listQuery.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { SalePaymentService } from "./salePayment.service.js";
 
 const getAllPayments = catchAsync(async (req: Request, res: Response) => {
     const result = await SalePaymentService.getAllPayments(
         req.user as IRequestUser,
-        req.query.sale_id as string | undefined
+        req.query.sale_id as string | undefined,
+        parseListOptions(req.query as Record<string, unknown>)
     );
     sendResponse(res, {
         success: true,

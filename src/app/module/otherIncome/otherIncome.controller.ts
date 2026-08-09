@@ -2,11 +2,12 @@ import { Request, Response } from "express";
 import status from "http-status";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
+import { parseListOptions } from "../../shared/listQuery.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { OtherIncomeService } from "./otherIncome.service.js";
 
 const getAllOtherIncomes = catchAsync(async (req: Request, res: Response) => {
-    const result = await OtherIncomeService.getAllOtherIncomes(req.user as IRequestUser);
+    const result = await OtherIncomeService.getAllOtherIncomes(req.user as IRequestUser, parseListOptions(req.query as Record<string, unknown>));
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

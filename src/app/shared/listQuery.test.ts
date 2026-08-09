@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { escapeLikeTerm, pageSlice, paginationMeta, parseListOptions } from "./listQuery.js";
+import { dateRangeWhere, escapeLikeTerm, pageSlice, paginationMeta, parseListOptions } from "./listQuery.js";
 
 // The frontend's queryEngine.test.ts pins down what a search means in the
 // browser. These pin down the server half, and the pair have to agree - a
@@ -34,6 +34,18 @@ describe("parseListOptions", () => {
             page: 2,
             limit: 50,
             search: "chair",
+            from: undefined,
+            to: undefined,
+        });
+    });
+
+    it("reads a date range", () => {
+        assert.deepEqual(parseListOptions({ from: "2026-08-01", to: "2026-08-31" }), {
+            page: undefined,
+            limit: undefined,
+            search: undefined,
+            from: "2026-08-01",
+            to: "2026-08-31",
         });
     });
 
@@ -42,16 +54,61 @@ describe("parseListOptions", () => {
             page: undefined,
             limit: undefined,
             search: undefined,
+            from: undefined,
+            to: undefined,
         });
         assert.deepEqual(parseListOptions({ page: "abc", limit: "1.5" }), {
             page: undefined,
             limit: undefined,
             search: undefined,
+            from: undefined,
+            to: undefined,
         });
     });
 
+    // A bad date must widen the range, never narrow it - dropping rows would be
+    // far worse than ignoring the filter.
+    it("ignores a malformed or impossible date", () => {
+        assert.equal(parseListOptions({ from: "01-08-2026" }).from, undefined);
+        assert.equal(parseListOptions({ from: "2026-8-1" }).from, undefined);
+        assert.equal(parseListOptions({ to: "2026-02-31" }).to, undefined);
+        assert.equal(parseListOptions({ from: "" }).from, undefined);
+    });
+
     it("treats an absent query as no paging and no search", () => {
-        assert.deepEqual(parseListOptions({}), { page: undefined, limit: undefined, search: undefined });
+        assert.deepEqual(parseListOptions({}), {
+            page: undefined,
+            limit: undefined,
+            search: undefined,
+            from: undefined,
+            to: undefined,
+        });
+    });
+});
+
+describe("dateRangeWhere", () => {
+    it("is empty without either bound, so it can always be spread into a where", () => {
+        assert.deepEqual(dateRangeWhere({}), {});
+    });
+
+    it("covers the whole of both end days", () => {
+        const where = dateRangeWhere({ from: "2026-08-01", to: "2026-08-31" }) as {
+            date: { gte: Date; lte: Date };
+        };
+        assert.equal(where.date.gte.toISOString(), "2026-08-01T00:00:00.000Z");
+        assert.equal(where.date.lte.toISOString(), "2026-08-31T23:59:59.999Z");
+    });
+
+    it("accepts one open end", () => {
+        const from = dateRangeWhere({ from: "2026-08-01" }) as { date: Record<string, Date> };
+        assert.ok(from.date.gte instanceof Date);
+        assert.equal(from.date.lte, undefined);
+    });
+
+    it("can name a different column", () => {
+        const where = dateRangeWhere({ from: "2026-08-01" }, "created_at") as Record<string, unknown>;
+        assert.ok(where.created_at);
+        assert.equal(where.date, undefined);
     });
 });
 

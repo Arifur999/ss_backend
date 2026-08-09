@@ -63,10 +63,16 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
             FROM products p
             LEFT JOIN suppliers s ON s.id = p.supplier_id
             LEFT JOIN inventory inv ON inv.product_id = p.id AND inv.branch_id IS NULL
+            -- Each of these aggregates is scoped to the owner. Without that
+            -- predicate they group EVERY tenant's rows to answer one owner's
+            -- page: the result was still correct, because the product ids they
+            -- join back to are owner-scoped, but the work grew with the size of
+            -- the whole database rather than this account.
             LEFT JOIN (
                 SELECT product_id, MAX(received_qty) AS opening_qty
                 FROM inventory_batches
                 WHERE source_type = 'opening_stock'
+                  AND owner_id = ${user.ownerId}
                 GROUP BY product_id
             ) batch ON batch.product_id = p.id
             LEFT JOIN (
@@ -77,12 +83,18 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 FROM purchase_items pi
                 LEFT JOIN (
                     SELECT purchase_item_id, SUM(received_qty) AS received
-                    FROM purchase_receives GROUP BY purchase_item_id
+                    FROM purchase_receives
+                    WHERE owner_id = ${user.ownerId}
+                    GROUP BY purchase_item_id
                 ) r ON r.purchase_item_id = pi.id
+                WHERE pi.owner_id = ${user.ownerId}
                 GROUP BY pi.product_id
             ) po ON po.product_id = p.id
             LEFT JOIN (
-                SELECT product_id, SUM(qty) AS sales_qty FROM sale_items GROUP BY product_id
+                SELECT product_id, SUM(qty) AS sales_qty
+                FROM sale_items
+                WHERE owner_id = ${user.ownerId}
+                GROUP BY product_id
             ) si ON si.product_id = p.id
             WHERE p.owner_id = ${user.ownerId}
               AND p.deleted_at IS NULL
@@ -116,16 +128,27 @@ const getInventoryList = async (user: IRequestUser, options: InventoryListOption
 
     // The totals are over every matching row, not the page - a stock value
     // that only counted the rows scrolled into view would be worse than no
-    // total at all.
-    const [totals] = await prisma.$queryRaw<{ total_rows: bigint; total_value: string | null }[]>(
-        Prisma.sql`SELECT count(*) AS total_rows, COALESCE(SUM(stock_value), 0) AS total_value FROM (${rows}) t`
-    );
-
+    // total at all. They ride along as window functions rather than a second
+    // query, because each one builds the whole aggregate above: asking twice
+    // did all of that work twice. count/sum OVER () are evaluated before
+    // LIMIT, so they still describe every matching row, not just this page.
     const page = await prisma.$queryRaw<Record<string, unknown>[]>(
         slice
-            ? Prisma.sql`SELECT * FROM (${rows}) t ORDER BY product_code ASC LIMIT ${slice.take} OFFSET ${slice.skip}`
-            : Prisma.sql`SELECT * FROM (${rows}) t ORDER BY product_code ASC`
+            ? Prisma.sql`SELECT *, count(*) OVER () AS total_rows, COALESCE(SUM(stock_value) OVER (), 0) AS total_value
+                         FROM (${rows}) t ORDER BY product_code ASC LIMIT ${slice.take} OFFSET ${slice.skip}`
+            : Prisma.sql`SELECT *, count(*) OVER () AS total_rows, COALESCE(SUM(stock_value) OVER (), 0) AS total_value
+                         FROM (${rows}) t ORDER BY product_code ASC`
     );
+
+    // An empty page carries no window values. That happens when the requested
+    // page is past the end (rows deleted since the count was taken), so fall
+    // back to the aggregate-only query rather than reporting zero stock.
+    let totals = page[0] as { total_rows?: bigint; total_value?: string | null } | undefined;
+    if (!page.length) {
+        [totals] = await prisma.$queryRaw<{ total_rows: bigint; total_value: string | null }[]>(
+            Prisma.sql`SELECT count(*) AS total_rows, COALESCE(SUM(stock_value), 0) AS total_value FROM (${rows}) t`
+        );
+    }
 
     return {
         rows: page.map((row) => ({

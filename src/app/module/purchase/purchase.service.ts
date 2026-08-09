@@ -3,6 +3,7 @@ import { ShippingStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { createReceiveStockBatch } from "../inventory/fifo.helpers.js";
 import { ICreatePurchasePayload, IReceivePurchaseItemPayload, IUpdatePurchasePayload } from "./purchase.validation.js";
@@ -13,11 +14,12 @@ const purchaseInclude = {
     purchase_items: { include: { purchase_receives: true } },
 } as const;
 
-const getAllPurchases = async (user: IRequestUser, statuses?: string[]) => {
+const getAllPurchases = async (user: IRequestUser, statuses?: string[], options: ListOptions = {}) => {
     return prisma.purchase.findMany({
         where: {
             owner_id: user.ownerId,
             deleted_at: null,
+            ...dateRangeWhere(options),
             ...(statuses && statuses.length > 0
                 ? { shipping_status: { in: statuses as ShippingStatus[] } }
                 : {}),

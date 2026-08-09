@@ -4,6 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
+import { invalidateOwnerAccess } from "../../utils/authCache.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { PlatformSettingsService } from "../platformSettings/platformSettings.service.js";
 import { IChoosePlanPayload, ISubmitManualPaymentPayload } from "./subscription.validation.js";
@@ -124,6 +125,10 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
             : "Selected yearly plan - redirected to manual bKash checkout",
     });
 
+    // Starting a trial grants access; picking a paid plan takes it away until
+    // payment is approved. Both have to apply on the very next request.
+    invalidateOwnerAccess(user.ownerId);
+
     return subscription;
 };
 
@@ -217,6 +222,9 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
         action: "payment_submitted",
         detail: `Submitted bKash payment (trx: ${payload.trx_id}) - awaiting super admin approval`,
     });
+
+    // Submitting can move an expired owner to "awaiting approval".
+    invalidateOwnerAccess(user.ownerId);
 
     return payment;
 };

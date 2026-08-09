@@ -6,6 +6,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
+import { invalidateUser } from "../../utils/authCache.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
 import { SIGNUP_SMS_CREDITS } from "../../utils/smsGrants.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
@@ -185,6 +186,8 @@ const verifyEmailOtp = async (email: string, code: string) => {
         where: { id: user.id },
         data: { email_verified: true },
     });
+    // checkAuth reads email_verified from its cache.
+    invalidateUser(user.id);
 
     // Code accepted -> this is the moment a session actually starts.
     return issueSession(verifiedUser);

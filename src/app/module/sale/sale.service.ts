@@ -3,7 +3,7 @@ import { DeliveryStatus, Prisma } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
-import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
+import { dateRangeWhere, escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { consumeFifoForSaleItem, releaseFifoForSaleItem } from "../inventory/fifo.helpers.js";
 import { ICreateSaleDeliveryPayload, ICreateSalePayload, ISaleItemPayload, ISalePaymentPayload } from "./sale.validation.js";
@@ -26,6 +26,7 @@ const getAllSales = async (user: IRequestUser, options: ListOptions = {}) => {
     const where: Prisma.SaleWhereInput = {
         owner_id: user.ownerId,
         deleted_at: null,
+        ...dateRangeWhere(options),
         ...(options.search
             ? {
                 OR: [

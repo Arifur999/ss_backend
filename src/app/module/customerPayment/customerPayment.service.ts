@@ -2,12 +2,13 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { ICreateCustomerPaymentPayload, IUpdateCustomerPaymentPayload } from "./customerPayment.validation.js";
 
-const getAllPayments = async (user: IRequestUser) => {
+const getAllPayments = async (user: IRequestUser, options: ListOptions = {}) => {
     return prisma.customerPayment.findMany({
-        where: { owner_id: user.ownerId, deleted_at: null },
+        where: { owner_id: user.ownerId, deleted_at: null, ...dateRangeWhere(options) },
         orderBy: [{ date: "desc" }, { created_at: "desc" }],
     });
 };

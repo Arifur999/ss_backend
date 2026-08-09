@@ -93,10 +93,18 @@ jobs:
              # by inode. git reset replaces the file rather than editing it, so
              # the running container keeps reading the old one and a config
              # change appears to deploy while doing nothing at all. Recreating
-             # the container is what re-resolves the mount; nginx -t first so a
-             # broken config fails the deploy instead of the site.
+             # the container is what re-resolves the mount.
+             #
+             # The check has to run BEFORE that recreate, and in a throwaway
+             # container: `exec nginx -t` in the running one would only re-read
+             # the old inode, and checking after the recreate means a broken
+             # config takes the site down first and fails the deploy second.
+             # `run --rm --no-deps` starts a fresh container, so it picks up the
+             # new file, with the same cert volumes mounted that `nginx -t`
+             # needs to resolve ssl_certificate. set -e aborts here on failure,
+             # leaving the live nginx untouched.
+             docker compose run --rm --no-deps nginx nginx -t
              docker compose up -d --force-recreate nginx
-             docker compose exec -T nginx nginx -t
              docker image prune -f'
 
       # Asked over the public address, the same way a customer reaches it, so

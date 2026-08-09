@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { Role } from "../../generated/prisma/enums.js";
 import AppError from "../errorHelpers/AppError.js";
 import { prisma } from "../lib/prisma.js";
+import { getCachedUser, setCachedUser } from "../utils/authCache.js";
 import { cookieUtils } from "../utils/cookie.js";
 import { jwtUtils } from "../utils/jwt.js";
 
@@ -27,9 +28,27 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
 
         const { userId } = verifiedToken.decoded;
 
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-        });
+        // Cached for a few seconds and projected down to the columns used
+        // below - the unfiltered read pulled every column, password hash
+        // included, on every request. Any change to the user invalidates the
+        // entry (see utils/authCache.ts).
+        let user = getCachedUser(userId);
+        if (user === undefined) {
+            user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    full_name: true,
+                    role: true,
+                    phone: true,
+                    owner_id: true,
+                    is_active: true,
+                    email_verified: true,
+                },
+            });
+            setCachedUser(userId, user);
+        }
 
         if (!user) {
             throw new AppError(status.UNAUTHORIZED, "Unauthorized access! User not found.");

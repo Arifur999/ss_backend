@@ -3,6 +3,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { invalidateUser } from "../../utils/authCache.js";
 import { ICreateTeamUserPayload, IUpdateTeamUserPayload } from "./user.validation.js";
 
 // Same shape the old manage-users edge function returned.
@@ -82,6 +83,10 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
         data,
     });
 
+    // Role and is_active are read from the cache on every request, so a
+    // deactivated or demoted user has to stop working now, not in 15s.
+    invalidateUser(target.id);
+
     return toTeamUser(updated);
 };
 
@@ -99,6 +104,7 @@ const deleteTeamUser = async (userId: string, user: IRequestUser) => {
     }
 
     await prisma.user.delete({ where: { id: userId } });
+    invalidateUser(userId);
 
     return { message: "Team user deleted successfully" };
 };

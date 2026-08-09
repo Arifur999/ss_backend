@@ -6,6 +6,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
+import { invalidateAuthCaches, invalidateOwnerAccess } from "../../utils/authCache.js";
 import { sendTemplatedEmail } from "../../utils/email.js";
 import { planSmsCredits } from "../../utils/smsGrants.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
@@ -65,6 +66,8 @@ const updateOwnerSubscription = async (
         detail: `Subscription updated: ${JSON.stringify(payload)}`,
     });
 
+    invalidateOwnerAccess(ownerId);
+
     return updated;
 };
 
@@ -105,6 +108,8 @@ const grantTrialExtension = async (ownerId: string, admin: IRequestUser) => {
         action: "trial_extended",
         detail: `Trial extended by 7 days (new expiry: ${newExpiry.toISOString()})`,
     });
+
+    invalidateOwnerAccess(ownerId);
 
     return updated;
 };
@@ -163,6 +168,10 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
         action: "owner_deleted",
         detail: `Owner ${owner.email} and their workspace deleted`,
     });
+
+    // The delete cascades to team members, whose ids are not listed here, so
+    // the safe move is to drop both caches outright.
+    invalidateAuthCaches();
 
     return { message: "Owner deleted successfully" };
 };
@@ -342,6 +351,10 @@ const updatePayment = async (
         action: "payment_updated",
         detail: `Payment ${payment.invoice_no} marked as ${payload.status ?? "updated"}`,
     });
+
+    // Approving a payment activates the plan - the owner must regain access
+    // immediately, not once the cached entry ages out.
+    invalidateOwnerAccess(payment.owner_id);
 
     // When this approval just activated a paid plan, email the owner a detailed
     // invoice for their records. Fire-and-forget - a slow mail provider must

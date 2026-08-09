@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import status from "http-status";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
+import { parseListOptions } from "../../shared/listQuery.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { PurchaseService } from "./purchase.service.js";
 
@@ -9,7 +10,8 @@ const getAllPurchases = catchAsync(async (req: Request, res: Response) => {
     const statuses = typeof req.query.status === "string" && req.query.status.length > 0
         ? req.query.status.split(",").map((value) => value.trim())
         : undefined;
-    const result = await PurchaseService.getAllPurchases(req.user as IRequestUser, statuses);
+    const options = parseListOptions(req.query as Record<string, unknown>);
+    const result = await PurchaseService.getAllPurchases(req.user as IRequestUser, statuses, options);
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

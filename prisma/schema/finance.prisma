@@ -20,6 +20,7 @@ model Investment {
 
   @@index([owner_id])
   @@index([date])
+  @@index([owner_id, date(sort: Desc)])
   @@map("investments")
 }
 
@@ -46,6 +47,7 @@ model ProfitWithdrawal {
 
   @@index([owner_id])
   @@index([date])
+  @@index([owner_id, date(sort: Desc)])
   @@map("profit_withdrawals")
 }
 
@@ -94,6 +96,7 @@ model Loan {
 
   @@index([owner_id])
   @@index([date])
+  @@index([owner_id, date(sort: Desc)])
   @@map("loans")
 }
 
@@ -115,6 +118,7 @@ model AccountTransfer {
 
   @@index([owner_id])
   @@index([date])
+  @@index([owner_id, date(sort: Desc)])
   @@map("account_transfers")
 }
 
@@ -142,6 +146,7 @@ model Expense {
   @@index([owner_id])
   @@index([date])
   @@index([category_id])
+  @@index([owner_id, date(sort: Desc)])
   @@map("expenses")
 }
 
@@ -166,5 +171,6 @@ model OtherIncome {
 
   @@index([owner_id])
   @@index([date])
+  @@index([owner_id, date(sort: Desc)])
   @@map("other_incomes")
 }

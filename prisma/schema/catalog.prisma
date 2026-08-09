@@ -35,6 +35,8 @@ model Product {
 
   @@unique([owner_id, product_code])
   @@index([owner_id])
+  // SetNull FK: deleting a supplier scans products without this.
+  @@index([supplier_id])
   @@map("products")
 }
 
@@ -68,6 +70,7 @@ model Purchase {
   @@index([owner_id])
   @@index([date])
   @@index([supplier_id])
+  @@index([owner_id, date(sort: Desc)])
   @@map("purchases")
 }
 
@@ -95,6 +98,7 @@ model PurchaseItem {
 
   @@index([owner_id])
   @@index([purchase_id])
+  @@index([product_id])
   @@map("purchase_items")
 }
 
@@ -118,6 +122,8 @@ model PurchaseReceive {
 
   @@index([owner_id])
   @@index([purchase_id])
+  // Joined per item by the stock aggregate and the nested receive include.
+  @@index([purchase_item_id])
   @@map("purchase_receives")
 }
 
@@ -144,6 +150,7 @@ model SupplierPayment {
 
   @@index([owner_id])
   @@index([supplier_id])
+  @@index([owner_id, date(sort: Desc)])
   @@map("supplier_payments")
 }
 
@@ -185,6 +192,8 @@ model InventoryHistory {
 
   @@index([owner_id])
   @@index([product_id])
+  // The history page is a top-500 by created_at for one owner.
+  @@index([owner_id, created_at(sort: Desc)])
   @@map("inventory_history")
 }
 
