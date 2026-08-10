@@ -46,28 +46,39 @@ cron.schedule("0 9 * * *", async () => {
     }
 });
 
+// Sits behind nginx, so the client address arrives in X-Forwarded-For. Without
+// this every request looks like it came from the proxy, which would put all
+// users in one rate-limit bucket and let a single attacker lock out everybody.
+// 1 = trust exactly one proxy hop, which is what the compose stack has.
+app.set("trust proxy", 1);
+
 // FRONTEND_URL may be a single origin or a comma-separated list (e.g. both
-// the www and bare-domain variants of a shared-hosting site: FRONTEND_URL=
-// https://example.com,https://www.example.com). Frontend and backend now
-// commonly live on entirely different hosts/domains (Railway + Hostinger),
-// so this can no longer assume same-origin like the nginx-proxied setup did.
+// the www and bare-domain variants of a site: FRONTEND_URL=
+// https://example.com,https://www.example.com).
 const staticAllowedOrigins = [
     ...env.FRONTEND_URL.split(",").map((url) => url.trim()).filter(Boolean),
-    "http://localhost:5173",
-    "http://localhost:3000",
 ];
 
-// Besides the explicitly configured origins we also allow:
-//  (a) any localhost / 127.0.0.1 port during development (5174, 4173, ...), and
-//  (b) Hostinger preview subdomains (*.hostingersite.com) - the site is served
-//      from a temporary preview URL (e.g. purple-otter-123.hostingersite.com)
-//      until the real domain (cosmeticdentalbranding.com) is attached.
-// Requests with no Origin header (curl, server-to-server, same-origin) pass.
+// The SPA and the API are served from one origin (nginx proxies /api/ on the
+// same host), so in production the browser never makes a cross-origin request
+// and nothing beyond the configured origin needs to be allowed.
+//
+// Development keeps the localhost allowances so `npm run dev` on any Vite port
+// still reaches a local backend.
+//
+// Removed deliberately: `*.hostingersite.com`, which allowed ANY Hostinger
+// preview subdomain - free for anyone to register - as a credentialed origin.
+// It dated from a period when the frontend ran on a preview URL; that hosting
+// is gone. Cookies are SameSite=lax so it was not exploitable on its own, but
+// combined with the Bearer-token fallback in checkAuth it was one config change
+// away from being a real cross-origin read of every tenant's data.
+const isDevelopment = env.NODE_ENV !== "production";
+
 function isAllowedOrigin(origin?: string): boolean {
+    // No Origin header: same-origin navigations, curl, server-to-server.
     if (!origin) return true;
     if (staticAllowedOrigins.includes(origin)) return true;
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
-    if (/^https:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(origin)) return true;
+    if (isDevelopment && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
     return false;
 }
 

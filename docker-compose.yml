@@ -75,6 +75,15 @@ services:
     logging: *default-logging
     env_file:
       - .env
+    # env_file OVERRIDES the image's own ENV, so `NODE_ENV=production` in the
+    # Dockerfile is silently lost whenever .env carries a different value - and
+    # config/env.ts falls back to "development" when it is absent entirely.
+    # Two things hang off that flag: auth cookies only get the Secure attribute
+    # in production (utils/cookie.ts), and the error handler only hides stack
+    # traces in production (globalErrorHandler.ts). `environment:` wins over
+    # env_file, so pinning it here settles both regardless of what .env says.
+    environment:
+      NODE_ENV: production
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +102,9 @@ services:
       start_period: 90s
 
   nginx:
-    image: nginx:alpine
+    # Minor pinned, not floating on the major: `nginx:alpine` meant a new major
+    # version could land on the reverse proxy during a routine rebuild.
+    image: nginx:1.29-alpine
     restart: unless-stopped
     logging: *default-logging
     ports:

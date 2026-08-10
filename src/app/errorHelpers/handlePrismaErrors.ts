@@ -1,6 +1,18 @@
 import status from "http-status";
+import { env } from "../../config/env.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { ISimplifiedError } from "../interfaces/error.interfaces.js";
+
+// Prisma messages carry the detail that makes them useful while developing and
+// risky in production: P2010 (raw query failure) embeds the PostgreSQL error,
+// which for the stock query would echo table and column names back to whoever
+// triggered it. In production the caller gets a fixed sentence and the real
+// message goes to the server log instead, where it is still there to read.
+const safeMessage = (error: { code?: string; message: string }, fallback: string): string => {
+    if (env.NODE_ENV !== "production") return error.message || fallback;
+    console.error(`[prisma] ${error.code ?? "unknown"}: ${error.message}`);
+    return fallback;
+};
 
 export const handlePrismaClientKnownRequestError = (
     error: Prisma.PrismaClientKnownRequestError
@@ -26,7 +38,7 @@ export const handlePrismaClientKnownRequestError = (
             statusCode = status.NOT_FOUND;
             break;
         default:
-            message = error.message;
+            message = safeMessage(error, "Database request failed");
             break;
     }
 
@@ -39,11 +51,14 @@ export const handlePrismaClientKnownRequestError = (
 
 export const handlePrismaClientUnknownError = (
     error: Prisma.PrismaClientUnknownRequestError
-): ISimplifiedError => ({
-    statusCode: status.INTERNAL_SERVER_ERROR,
-    message: error.message || "Unknown database error",
-    errorSource: [{ path: "", message: error.message || "Unknown database error" }],
-});
+): ISimplifiedError => {
+    const message = safeMessage(error, "Unknown database error");
+    return {
+        statusCode: status.INTERNAL_SERVER_ERROR,
+        message,
+        errorSource: [{ path: "", message }],
+    };
+};
 
 export const handlePrismaClientValidationError = (): ISimplifiedError => ({
     statusCode: status.BAD_REQUEST,

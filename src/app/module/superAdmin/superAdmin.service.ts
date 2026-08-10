@@ -7,7 +7,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateAuthCaches, invalidateOwnerAccess } from "../../utils/authCache.js";
-import { sendTemplatedEmail } from "../../utils/email.js";
+import { escapeHtml, sendTemplatedEmail } from "../../utils/email.js";
 import { planSmsCredits } from "../../utils/smsGrants.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
 
@@ -383,17 +383,20 @@ const buildInvoiceHtml = (owner: OwnerWithSubscription, payment: SubscriptionPay
     const planLabel = payment.plan_type === "yearly" ? "Yearly plan" : "Monthly plan";
     const business = owner.subscription?.business_name || owner.full_name || "";
     const expiry = owner.subscription?.expiry_date;
+    // Values are escaped, not the labels: business_name, full_name and trx_id
+    // are all typed by the owner, and they land inside HTML that goes out by
+    // email. The markup around them is ours and stays as-is.
     const row = (label: string, value: string, bold = false) =>
-        `<tr><td style="padding:8px 0;color:#64748b;">${label}</td><td style="padding:8px 0;text-align:right;${bold ? "font-weight:600;" : ""}">${value}</td></tr>`;
+        `<tr><td style="padding:8px 0;color:#64748b;">${label}</td><td style="padding:8px 0;text-align:right;${bold ? "font-weight:600;" : ""}">${escapeHtml(value)}</td></tr>`;
 
     return `
     <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;">
       <div style="background:#0b0b0f;color:#ffffff;padding:20px 24px;border-radius:12px 12px 0 0;">
         <h2 style="margin:0;font-size:20px;">Payment Invoice</h2>
-        <p style="margin:4px 0 0;font-size:13px;color:#cbd5e1;">Invoice #${payment.invoice_no}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#cbd5e1;">Invoice #${escapeHtml(payment.invoice_no)}</p>
       </div>
       <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
-        <p style="margin:0 0 16px;font-size:14px;">Hi ${owner.full_name || "there"}, thank you for your payment - your subscription is now active.</p>
+        <p style="margin:0 0 16px;font-size:14px;">Hi ${escapeHtml(owner.full_name) || "there"}, thank you for your payment - your subscription is now active.</p>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           ${row("Business", business, true)}
           ${row("Plan", planLabel, true)}

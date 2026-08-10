@@ -225,7 +225,11 @@ const forgotPassword = async (email: string) => {
         throw new AppError(status.NOT_FOUND, "This email is not registered. Please use the email you signed up with.");
     }
 
-    await otpUtils.issueOtp(normalizedEmail, user.full_name, OTP_PURPOSE_RESET_PASSWORD);
+    // resendOtp, not issueOtp: this is the path an attacker would use to mint a
+    // fresh code after burning the five attempts on the last one. issueOtp has
+    // no cooldown, so calling it directly here meant the attempt cap could be
+    // reset at will. resendOtp applies the 60s wait and issues the code itself.
+    await otpUtils.resendOtp(normalizedEmail, user.full_name, OTP_PURPOSE_RESET_PASSWORD);
 
     return { message: "A reset code has been sent to your email." };
 };

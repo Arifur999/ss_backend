@@ -137,7 +137,7 @@ const deliverEmail = async (to: string, subject: string, html: string): Promise<
 // A user's full_name ends up interpolated straight into HTML below. It's
 // always mailed back to that same user (never to anyone else), so there's no
 // cross-user injection risk - but escaping it is free, so do it anyway.
-const escapeHtml = (value: string) =>
+export const escapeHtml = (value: string) =>
     value.replace(/[&<>"']/g, (char) => ({
         "&": "&amp;",
         "<": "&lt;",
@@ -208,9 +208,19 @@ export const sendOtpEmail = async (to: string, name: string, otp: string): Promi
     // line to verify without even opening the email.
     const sent = await deliverEmail(to, `${otp} is your verification code`, otpEmailHtml(name, otp));
     if (!sent) {
-        // Every configured provider failed (or none is configured) - log the
-        // code so the user can still be helped manually.
-        console.log(`[otp] Fallback - OTP for ${to} is: ${otp}`);
+        // Every configured provider failed (or none is configured). In
+        // development the code is printed so the flow stays testable without a
+        // mail provider.
+        //
+        // Never in production: an outage at the mail provider would otherwise
+        // turn the container log into a live feed of login and password-reset
+        // codes, readable by anyone with log access. The failure is still
+        // reported, just without the code itself.
+        if (env.NODE_ENV === "production") {
+            console.error(`[otp] Delivery failed for ${to} - no provider accepted the message`);
+        } else {
+            console.log(`[otp] Fallback - OTP for ${to} is: ${otp}`);
+        }
     }
     return sent;
 };
@@ -229,7 +239,10 @@ export const sendOtpEmail = async (to: string, name: string, otp: string): Promi
 // admin's template never crashes the reminder cron.
 export const renderTemplate = (template: string, vars: Record<string, string | number>): string => {
     return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (match, key: string) => {
-        return key in vars ? String(vars[key]) : match;
+        // The template itself is admin-authored HTML and stays raw. The values
+        // are not - business_name and full_name come from what an owner typed
+        // at signup - so they are escaped before being dropped into the markup.
+        return key in vars ? escapeHtml(String(vars[key])) : match;
     });
 };
 

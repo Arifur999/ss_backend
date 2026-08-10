@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { randomInt } from "node:crypto";
 import status from "http-status";
 import AppError from "../errorHelpers/AppError.js";
 import { prisma } from "../lib/prisma.js";
@@ -22,9 +23,14 @@ const RESEND_COOLDOWN_SECONDS = 60;
 export const OTP_PURPOSE_VERIFY_EMAIL = "verify_email";
 export const OTP_PURPOSE_RESET_PASSWORD = "reset_password";
 
-// Cryptographically-fine-for-otp random 6 digit code (100000..999999).
-const generateOtpCode = () =>
-    String(Math.floor(100000 + Math.random() * 900000));
+// Random 6 digit code (100000..999999).
+//
+// crypto.randomInt, not Math.random: V8's PRNG is not cryptographic and its
+// internal state can be recovered from a run of observed outputs. Codes are
+// observable - anyone can register an account and read the ones mailed to them
+// - so a predictable generator would let an attacker compute the reset code
+// issued for somebody else's account. Same shape and length as before.
+const generateOtpCode = () => String(randomInt(100000, 1000000));
 
 // Issue (or re-issue) an OTP for the given email and send it out.
 // Deletes any previous codes for the same purpose so only one is ever valid.
