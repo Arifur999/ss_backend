@@ -128,8 +128,10 @@ model PlatformSetting {
   monthly_price Decimal @default(600) @db.Decimal(15, 2)
 
   // Hotline shown to an owner while their manual payment awaits approval, so
-  // they know who to call if activation is taking too long.
-  support_number String @default("")
+  // they know who to call if activation is taking too long. Editable by the
+  // super admin in Settings; the frontend falls back to lib/support.ts when it
+  // is blank, so the two should be kept in step.
+  support_number String @default("01719731884")
 
   // Expiry reminder email template. Supports {{name}}, {{business_name}},
   // {{days_left}}, {{expiry_date}}, {{plan}} placeholders - see
