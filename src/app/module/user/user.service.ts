@@ -79,7 +79,12 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
     if (payload.phone !== undefined) data.phone = payload.phone;
     if (payload.avatar_url !== undefined) data.avatar_url = payload.avatar_url;
     if (payload.is_active !== undefined) data.is_active = payload.is_active;
-    if (payload.password !== undefined) data.password = await bcrypt.hash(payload.password, 10);
+    if (payload.password !== undefined) {
+        data.password = await bcrypt.hash(payload.password, 10);
+        // An owner setting a new password for a staff member is usually doing it
+        // to take access back. Retire whatever sessions that account already has.
+        data.token_version = { increment: 1 };
+    }
 
     const updated = await prisma.user.update({
         where: { id: target.id },

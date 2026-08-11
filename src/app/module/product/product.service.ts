@@ -3,6 +3,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
+import { assertOwnedRecord } from "../../shared/assertOwnership.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
 
@@ -153,6 +154,19 @@ const getProductIds = async (user: IRequestUser, options: ListOptions = {}) => {
 };
 
 const createProduct = async (payload: ICreateProductPayload, user: IRequestUser) => {
+    // The supplier is the one field here that points at another table, and the
+    // created product is returned with the supplier included - so an id from
+    // another workspace would have echoed that supplier's details back.
+    if (payload.supplier_id) {
+        await assertOwnedRecord(
+            () => prisma.supplier.findFirst({
+                where: { id: payload.supplier_id as string, owner_id: user.ownerId },
+                select: { id: true },
+            }),
+            "Supplier"
+        );
+    }
+
     // No separate pre-check query for an existing product_code - the
     // @@unique([owner_id, product_code]) constraint already guarantees this,
     // so checking first only costs an extra network round trip to the DB on

@@ -16,6 +16,17 @@ model User {
   // the 6-digit OTP sent to their email at registration (or at login if
   // they never verified). Team users created by an owner are auto-verified.
   email_verified Boolean @default(false)
+  // Bumped whenever every existing session for this user must stop working -
+  // today that means a password change, whether the user reset it themselves or
+  // an owner set a new one for their staff. The number is stamped into each
+  // token and compared on every request, so changing a password because the
+  // account was compromised actually ends the attacker's session instead of
+  // leaving it live until the token expires.
+  //
+  // Starts at 0, and a token with no version claim is read as 0, so tokens
+  // issued before this column existed keep working - nobody is signed out by
+  // the upgrade itself.
+  token_version Int @default(0)
   // For owners: owner_id = own id. For team members: points to their owner.
   owner_id    String?
   last_active DateTime?

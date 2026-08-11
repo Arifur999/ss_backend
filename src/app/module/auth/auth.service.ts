@@ -42,12 +42,15 @@ const buildTokenPayload = (user: {
     role: Role;
     email: string;
     full_name: string;
+    token_version?: number;
 }): IRequestUser => ({
     userId: user.id,
     ownerId: user.role === Role.super_admin ? user.id : (user.owner_id ?? user.id),
     role: user.role,
     email: user.email,
     name: user.full_name,
+    // Stamped in so checkAuth can retire this token when the password changes.
+    tokenVersion: user.token_version ?? 0,
 });
 
 const registerOwner = async (payload: IRegisterOwnerPayload) => {
@@ -249,8 +252,16 @@ const resetPassword = async (email: string, code: string, newPassword: string) =
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
         where: { id: user.id },
-        data: { password: hashedPassword },
+        data: {
+            password: hashedPassword,
+            // The usual reason for resetting a password is that someone else
+            // may have it. Bumping the version retires every token already
+            // issued, so whoever else was signed in is signed out now rather
+            // than when their token happens to expire.
+            token_version: { increment: 1 },
+        },
     });
+    invalidateUser(user.id);
 
     return { message: "Password reset successfully. Please sign in with your new password." };
 };
@@ -331,6 +342,13 @@ const getNewTokens = async (refreshTokenPayload: IRequestUser) => {
 
     if (!user || !user.is_active) {
         throw new AppError(status.UNAUTHORIZED, "Unauthorized access!");
+    }
+
+    // Same check checkAuth makes: a refresh token issued before a password
+    // change must not be able to mint a fresh pair, or the reset would only
+    // last until the next refresh.
+    if ((refreshTokenPayload.tokenVersion ?? 0) !== user.token_version) {
+        throw new AppError(status.UNAUTHORIZED, "Your password was changed. Please sign in again.");
     }
 
     const tokenPayload = buildTokenPayload(user);

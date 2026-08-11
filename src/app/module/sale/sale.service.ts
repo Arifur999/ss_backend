@@ -83,6 +83,21 @@ const insertSaleItems = async (
     items: ISaleItemPayload[],
     user: IRequestUser
 ) => {
+    // Every product referenced has to belong to this workspace. Selling against
+    // a product id from another one would have written an inventory row and a
+    // FIFO layer keyed to their product, which then showed up on their stock
+    // page. Checked once up front rather than per item so a bad line fails the
+    // whole save before anything is written.
+    const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))] as string[];
+    if (productIds.length > 0) {
+        const owned = await tx.product.count({
+            where: { id: { in: productIds }, owner_id: user.ownerId },
+        });
+        if (owned !== productIds.length) {
+            throw new AppError(status.NOT_FOUND, "Product not found");
+        }
+    }
+
     for (const item of items) {
         // manual_cost is destructured out on purpose so it never reaches the
         // create() spread below - the sale item's cost is always FIFO/costed

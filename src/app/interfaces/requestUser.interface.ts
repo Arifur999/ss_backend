@@ -8,4 +8,9 @@ export interface IRequestUser {
     role: Role;
     email: string;
     name: string;
+    // Copied from users.token_version when the token is minted and compared
+    // against the current value on every request, so a password change ends
+    // sessions that were already open. Optional: tokens issued before the
+    // column existed carry no version and are read as 0.
+    tokenVersion?: number;
 }

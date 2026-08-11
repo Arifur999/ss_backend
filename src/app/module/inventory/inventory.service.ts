@@ -62,7 +62,11 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 COALESCE(si.sales_qty, 0)        AS sales_qty
             FROM products p
             LEFT JOIN suppliers s ON s.id = p.supplier_id
+            -- owner_id here as well: inventory is unique per (owner, product),
+            -- so without it a row another workspace held against the same
+            -- product id would join in and duplicate the line.
             LEFT JOIN inventory inv ON inv.product_id = p.id AND inv.branch_id IS NULL
+                AND inv.owner_id = ${user.ownerId}
             -- Each of these aggregates is scoped to the owner. Without that
             -- predicate they group EVERY tenant's rows to answer one owner's
             -- page: the result was still correct, because the product ids they

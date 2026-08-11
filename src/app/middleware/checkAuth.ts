@@ -45,6 +45,7 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
                     owner_id: true,
                     is_active: true,
                     email_verified: true,
+                    token_version: true,
                 },
             });
             setCachedUser(userId, user);
@@ -56,6 +57,14 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
 
         if (!user.is_active) {
             throw new AppError(status.UNAUTHORIZED, "Unauthorized access! User is not active.");
+        }
+
+        // A password change bumps token_version, which retires every token
+        // issued before it. Tokens minted before this claim existed carry no
+        // version and read as 0, matching the column's default - so the change
+        // itself signed nobody out.
+        if ((verifiedToken.decoded.tokenVersion ?? 0) !== user.token_version) {
+            throw new AppError(status.UNAUTHORIZED, "Your password was changed. Please sign in again.");
         }
 
         // Defense in depth: cookies are only issued after OTP verification,
@@ -75,6 +84,7 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
             role: user.role,
             email: user.email,
             name: user.full_name,
+            tokenVersion: user.token_version,
         };
 
         next();
