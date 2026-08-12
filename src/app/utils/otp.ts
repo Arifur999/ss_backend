@@ -10,13 +10,13 @@ import { sendOtpEmail } from "./email.js";
 //
 // Security rules baked in here:
 //  - the raw 6-digit code is never stored, only its bcrypt hash
-//  - a code expires 5 minutes after being (re)issued
+//  - a code expires 2 minutes after being (re)issued
 //  - max 5 wrong attempts per code, then the user must request a new one
 //  - resend is rate-limited to once every 60 seconds
 //  - one active OTP row per (email, purpose); issuing again replaces it
 // ---------------------------------------------------------------------------
 
-const OTP_TTL_MINUTES = 5;
+const OTP_TTL_MINUTES = 2;
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 

@@ -176,8 +176,8 @@ const otpEmailHtml = (name: string, otp: string) => `
                 </tr>
               </table>
               <p style="margin: 16px 0 24px; text-align: center;">
-                <span style="display: inline-block; background-color: #fef3c7; color: #b45309; font-size: 12px; font-weight: bold; padding: 6px 14px; border-radius: 999px;">
-                  Expires in 5 minutes
+                <span style="display: inline-block; background-color: #EFF6FF; color: #3B82F6; font-size: 12px; font-weight: bold; padding: 6px 14px; border-radius: 999px;">
+                  Expires in 2 minutes
                 </span>
               </p>
               <p style="margin: 0 0 6px; font-size: 13px; line-height: 1.6; color: #64748b;">
