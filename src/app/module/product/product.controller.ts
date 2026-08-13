@@ -62,6 +62,17 @@ const bulkUpsertProducts = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const bulkUpdateProductPrices = catchAsync(async (req: Request, res: Response) => {
+    const dryRun = req.body.dry_run === true;
+    const result = await ProductService.bulkUpdateProductPrices(req.body.prices, dryRun, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: dryRun ? "Price preview ready" : "Prices updated successfully",
+        data: result,
+    });
+});
+
 const updateProduct = catchAsync(async (req: Request, res: Response) => {
     const result = await ProductService.updateProduct(req.params.id as string, req.body, req.user as IRequestUser);
     sendResponse(res, {
@@ -88,6 +99,7 @@ export const ProductController = {
     getProductIds,
     createProduct,
     bulkUpsertProducts,
+    bulkUpdateProductPrices,
     updateProduct,
     deleteProduct,
 };

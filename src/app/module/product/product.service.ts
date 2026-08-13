@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { assertOwnedRecord } from "../../shared/assertOwnership.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
-import { ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
+import { IBulkUpdatePricesPayload, ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
 
 // Supabase joins returned the relation under the table name ("suppliers"),
 // and the frontend reads product.suppliers — keep that shape.
@@ -238,6 +238,135 @@ const bulkUpsertProducts = async (payloads: ICreateProductPayload[], user: IRequ
     return results.map(toSupabaseShape);
 };
 
+/**
+ * Update prices for products already in the catalogue, matched on product code.
+ *
+ * Separate from bulkUpsertProducts on purpose. That one creates a product when
+ * the code is unknown and revives soft-deleted ones - correct for an import,
+ * wrong for a monthly price list, where an unrecognised code means a typo or a
+ * product this shop does not carry.
+ *
+ * `updateMany` is what makes that guarantee structural rather than a check that
+ * could be dropped later: it can only ever touch rows that already match, so a
+ * code with no product simply updates nothing and is reported back as skipped.
+ *
+ * It also deliberately does not run the sale-item cost backfill that
+ * updateProduct does. That rule is for "sold before the purchase rate was
+ * known"; applied to a price rise it would stamp this month's higher cost onto
+ * an old sale and change a month that has already been reported. Past sales,
+ * purchases and FIFO layers keep their own recorded prices and are untouched.
+ */
+export const PRICE_FIELDS = ["cost_price", "selling_price", "dp_discount", "mrp_discount"] as const;
+export type PriceField = (typeof PRICE_FIELDS)[number];
+
+/**
+ * Which of a product's prices this row actually changes.
+ *
+ * Pulled out and exported because it is the whole safety story of the feature
+ * in one place, and it is worth testing without a database. Two rules:
+ *
+ *  - an absent field means the cell was blank, which means "leave this price
+ *    alone" - never "set it to zero";
+ *  - a field equal to what is already stored is not a change, so a file that
+ *    repeats last month's prices reports "already correct" instead of claiming
+ *    hundreds of updates.
+ */
+export const planPriceChange = (
+    current: Record<PriceField, number>,
+    row: Partial<Record<PriceField, number>>,
+) => {
+    const data: Partial<Record<PriceField, number>> = {};
+    const before: Partial<Record<PriceField, number>> = {};
+    const after: Record<PriceField, number> = { ...current };
+
+    for (const field of PRICE_FIELDS) {
+        const next = row[field];
+        if (next === undefined || next === current[field]) continue;
+        data[field] = next;
+        before[field] = current[field];
+        after[field] = next;
+    }
+
+    return { data, before, after, changed: Object.keys(data).length > 0 };
+};
+
+const bulkUpdateProductPrices = async (
+    rows: IBulkUpdatePricesPayload["prices"],
+    dryRun: boolean,
+    user: IRequestUser,
+) => {
+    // Last row wins for a repeated code, so the file reads top to bottom the
+    // way a person would expect.
+    const byCode = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+        byCode.set(row.product_code.trim(), { ...row, product_code: row.product_code.trim() });
+    }
+    const codes = [...byCode.keys()];
+
+    const existing = await prisma.product.findMany({
+        where: { owner_id: user.ownerId, product_code: { in: codes }, deleted_at: null },
+        select: { id: true, product_code: true, name: true, cost_price: true, selling_price: true, dp_discount: true, mrp_discount: true },
+    });
+    const existingByCode = new Map(existing.map((product) => [product.product_code, product]));
+
+    const matched: {
+        product_code: string;
+        name: string;
+        before: Partial<Record<PriceField, number>>;
+        after: Record<PriceField, number>;
+    }[] = [];
+    const unchanged: string[] = [];
+    const notFound: string[] = [];
+    const writes: { id: string; data: Partial<Record<PriceField, number>> }[] = [];
+
+    for (const code of codes) {
+        const product = existingByCode.get(code);
+        if (!product) {
+            notFound.push(code);
+            continue;
+        }
+
+        const plan = planPriceChange(
+            {
+                cost_price: Number(product.cost_price),
+                selling_price: Number(product.selling_price),
+                dp_discount: Number(product.dp_discount),
+                mrp_discount: Number(product.mrp_discount),
+            },
+            byCode.get(code)!,
+        );
+
+        if (!plan.changed) {
+            unchanged.push(code);
+            continue;
+        }
+
+        matched.push({ product_code: code, name: product.name, before: plan.before, after: plan.after });
+        writes.push({ id: product.id, data: plan.data });
+    }
+
+    if (!dryRun && writes.length > 0) {
+        await prisma.$transaction(
+            async (tx) => {
+                for (const write of writes) {
+                    // Scoped by owner as well as id: the id came from a query
+                    // this owner made, and this keeps that true at the write.
+                    await tx.product.updateMany({
+                        where: { id: write.id, owner_id: user.ownerId, deleted_at: null },
+                        data: write.data,
+                    });
+                }
+            },
+            // The same reasoning as bulkUpsertProducts: one write per product,
+            // run in sequence, and Prisma aborts an interactive transaction
+            // after 5 seconds by default.
+            { timeout: 120_000, maxWait: 15_000 },
+        );
+    }
+
+    return { dry_run: dryRun, matched, unchanged, notFound };
+};
+
 const updateProduct = async (id: string, payload: IUpdateProductPayload, user: IRequestUser) => {
     const existing = await prisma.product.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -375,6 +504,7 @@ export const ProductService = {
     getProductIds,
     createProduct,
     bulkUpsertProducts,
+    bulkUpdateProductPrices,
     updateProduct,
     deleteProduct,
 };

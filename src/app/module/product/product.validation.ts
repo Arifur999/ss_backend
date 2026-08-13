@@ -46,5 +46,41 @@ export const bulkUpsertProductsZodSchema = z.object({
     products: z.array(createProductZodSchema).min(1, "At least one product is required"),
 });
 
+/**
+ * A price-only update, matched on product code.
+ *
+ * The four price fields are all this accepts - no name, no supplier, no
+ * quantity, no is_active. That is deliberate: the schema itself is what
+ * guarantees a monthly price file cannot change anything but prices, rather
+ * than a check inside the service that a later edit could forget to keep.
+ *
+ * Each price is optional because a blank cell in the file means "leave this one
+ * alone". A field that is absent is not written; a field sent as 0 is a real
+ * zero the owner asked for.
+ */
+const priceField = (label: string) =>
+    z
+        .number(`${label} must be a number`)
+        .nonnegative(`${label} cannot be negative`)
+        .optional();
+
+export const bulkUpdatePricesZodSchema = z.object({
+    // A preview run: do every lookup and report what would change, write nothing.
+    dry_run: z.boolean("dry_run must be a boolean").optional(),
+    prices: z
+        .array(
+            z.object({
+                product_code: z.string("Product code must be string").min(1, "Product code is required"),
+                cost_price: priceField("Cost price"),
+                selling_price: priceField("Selling price"),
+                dp_discount: priceField("DP discount"),
+                mrp_discount: priceField("MRP discount"),
+            }),
+        )
+        .min(1, "At least one row is required"),
+});
+
+export type IBulkUpdatePricesPayload = z.infer<typeof bulkUpdatePricesZodSchema>;
+
 export type ICreateProductPayload = z.infer<typeof createProductZodSchema>;
 export type IUpdateProductPayload = z.infer<typeof updateProductZodSchema>;
