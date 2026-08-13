@@ -85,6 +85,7 @@ model Supplier {
   purchases         Purchase[]
   supplier_payments SupplierPayment[]
   other_incomes     OtherIncome[]
+  purchase_targets  PurchaseTarget[]
 
   @@index([owner_id])
   @@map("suppliers")
@@ -139,4 +140,28 @@ model ExpenseCategory {
 
   @@index([owner_id])
   @@map("expense_categories")
+}
+
+/// A buying target for one supplier over a stretch of months: "Tk 3,000,000
+/// from Proyojon between Jan 2026 and Jun 2026".
+///
+/// How many months that covers, and what it works out to per month, are not
+/// stored - they follow from the start and end and would only be able to
+/// disagree with them.
+model PurchaseTarget {
+  id           String   @id @default(uuid())
+  owner_id     String
+  supplier_id  String
+  start_year   Int
+  start_month  Int
+  end_year     Int
+  end_month    Int
+  total_amount Decimal  @default(0) @db.Decimal(15, 2)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id, start_year, start_month])
+  @@map("purchase_targets")
 }
