@@ -35,6 +35,16 @@ const updateTeamUser = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const updateOwnProfile = catchAsync(async (req: Request, res: Response) => {
+    const result = await UserService.updateOwnProfile(req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Profile updated successfully",
+        data: result,
+    });
+});
+
 const deleteTeamUser = catchAsync(async (req: Request, res: Response) => {
     const result = await UserService.deleteTeamUser(req.body.user_id, req.user as IRequestUser);
     sendResponse(res, {
@@ -49,5 +59,6 @@ export const UserController = {
     listTeamUsers,
     createTeamUser,
     updateTeamUser,
+    updateOwnProfile,
     deleteTeamUser,
 };

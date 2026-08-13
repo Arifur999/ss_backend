@@ -23,9 +23,19 @@ export const updateTeamUserZodSchema = z.object({
     password: z.string("Password must be string").min(6, "Password must be at least 6 characters").optional(),
 });
 
+// What a user may change about their own account. Deliberately not role or
+// is_active: an owner who demoted or deactivated themselves would lock
+// themselves out of the workspace with no way back in.
+export const updateOwnProfileZodSchema = z.object({
+    full_name: z.string("Full name must be string").min(1, "Full name is required").optional(),
+    phone: z.string("Phone must be string").optional(),
+    avatar_url: z.string("avatar_url must be string").optional(),
+});
+
 export const deleteTeamUserZodSchema = z.object({
     user_id: z.uuid("user_id must be a valid UUID"),
 });
 
 export type ICreateTeamUserPayload = z.infer<typeof createTeamUserZodSchema>;
 export type IUpdateTeamUserPayload = z.infer<typeof updateTeamUserZodSchema>;
+export type IUpdateOwnProfilePayload = z.infer<typeof updateOwnProfileZodSchema>;

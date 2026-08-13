@@ -4,7 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { invalidateUser } from "../../utils/authCache.js";
-import { ICreateTeamUserPayload, IUpdateTeamUserPayload } from "./user.validation.js";
+import { ICreateTeamUserPayload, IUpdateOwnProfilePayload, IUpdateTeamUserPayload } from "./user.validation.js";
 
 // Same shape the old manage-users edge function returned.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,6 +98,28 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
     return toTeamUser(updated);
 };
 
+// A person editing their own name, phone or photo. updateTeamUser refuses to
+// touch the caller's own row on purpose - it is the route for managing staff -
+// so this is the way an owner changes their own details.
+const updateOwnProfile = async (payload: IUpdateOwnProfilePayload, user: IRequestUser) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {};
+    if (payload.full_name !== undefined) data.full_name = payload.full_name;
+    if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.avatar_url !== undefined) data.avatar_url = payload.avatar_url;
+
+    const updated = await prisma.user.update({
+        where: { id: user.userId },
+        data,
+    });
+
+    // The name is read from the cache on every request, so it has to refresh
+    // now rather than in fifteen seconds.
+    invalidateUser(user.userId);
+
+    return toTeamUser(updated);
+};
+
 const deleteTeamUser = async (userId: string, user: IRequestUser) => {
     if (userId === user.userId) {
         throw new AppError(status.BAD_REQUEST, "Cannot delete your own account");
@@ -121,5 +143,6 @@ export const UserService = {
     listTeamUsers,
     createTeamUser,
     updateTeamUser,
+    updateOwnProfile,
     deleteTeamUser,
 };
