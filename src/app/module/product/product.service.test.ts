@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { planPriceChange } from "./product.service.js";
+import { planPriceChange } from "./priceUpdate.js";
 
 // A monthly price file arrives from a supplier and is applied to hundreds of
 // products at once, so the cost of getting this wrong is a catalogue full of
