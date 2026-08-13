@@ -82,5 +82,21 @@ export const bulkUpdatePricesZodSchema = z.object({
 
 export type IBulkUpdatePricesPayload = z.infer<typeof bulkUpdatePricesZodSchema>;
 
+/**
+ * The summary the page files once a whole run has finished.
+ *
+ * A run is sent to /bulk-update-prices in batches of a hundred, so recording
+ * history inside that endpoint would file one row per batch and a 300-row file
+ * would look like three separate updates. The page adds up what each batch
+ * reported and files it once, here.
+ */
+export const recordPriceUpdateZodSchema = z.object({
+    file_name: z.string("File name must be string").optional(),
+    updated_count: z.number("Updated count must be a number").int().nonnegative(),
+    skipped_count: z.number("Skipped count must be a number").int().nonnegative().optional(),
+    unchanged_count: z.number("Unchanged count must be a number").int().nonnegative().optional(),
+    status: z.enum(["completed", "partial"], "Status must be completed or partial").optional(),
+});
+
 export type ICreateProductPayload = z.infer<typeof createProductZodSchema>;
 export type IUpdateProductPayload = z.infer<typeof updateProductZodSchema>;

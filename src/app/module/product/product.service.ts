@@ -6,6 +6,8 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import { assertOwnedRecord } from "../../shared/assertOwnership.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { IBulkUpdatePricesPayload, ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
+import type z from "zod";
+import type { recordPriceUpdateZodSchema } from "./product.validation.js";
 import { planPriceChange, type PriceField } from "./priceUpdate.js";
 
 // Supabase joins returned the relation under the table name ("suppliers"),
@@ -334,6 +336,32 @@ const bulkUpdateProductPrices = async (
     return { dry_run: dryRun, matched, unchanged, notFound };
 };
 
+// Files one row for a finished run, and lists them back for the page.
+const recordPriceUpdate = async (
+    payload: z.infer<typeof recordPriceUpdateZodSchema>,
+    user: IRequestUser,
+) => {
+    return prisma.priceUpdateBatch.create({
+        data: {
+            owner_id: user.ownerId,
+            file_name: payload.file_name ?? "",
+            updated_count: payload.updated_count,
+            skipped_count: payload.skipped_count ?? 0,
+            unchanged_count: payload.unchanged_count ?? 0,
+            status: payload.status ?? "completed",
+            created_by: user.userId,
+        },
+    });
+};
+
+const getPriceUpdates = async (user: IRequestUser) => {
+    return prisma.priceUpdateBatch.findMany({
+        where: { owner_id: user.ownerId },
+        orderBy: { created_at: "desc" },
+        take: 100,
+    });
+};
+
 const updateProduct = async (id: string, payload: IUpdateProductPayload, user: IRequestUser) => {
     const existing = await prisma.product.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -472,6 +500,8 @@ export const ProductService = {
     createProduct,
     bulkUpsertProducts,
     bulkUpdateProductPrices,
+    recordPriceUpdate,
+    getPriceUpdates,
     updateProduct,
     deleteProduct,
 };

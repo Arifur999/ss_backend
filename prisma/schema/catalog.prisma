@@ -221,3 +221,26 @@ model InventoryBatch {
   @@index([product_id, received_date])
   @@map("inventory_batches")
 }
+
+/// One run of the bulk price update, so the Update Price page can show what
+/// has been done and when. Per run, not per product: the owner wants to see
+/// "on the 13th, 142 items changed", not 142 rows.
+///
+/// The counts are the server's own - the page adds up what each batch reported
+/// back and files the summary once the run finishes.
+model PriceUpdateBatch {
+  id              String   @id @default(uuid())
+  owner_id        String
+  file_name       String   @default("")
+  updated_count   Int      @default(0)
+  skipped_count   Int      @default(0)
+  unchanged_count Int      @default(0)
+  /// "completed" when every batch went through, "partial" when one failed
+  /// part way - which matters, because the rows before it are already saved.
+  status          String   @default("completed")
+  created_by      String?
+  created_at      DateTime @default(now())
+
+  @@index([owner_id, created_at])
+  @@map("price_update_batches")
+}

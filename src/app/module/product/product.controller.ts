@@ -73,6 +73,16 @@ const bulkUpdateProductPrices = catchAsync(async (req: Request, res: Response) =
     });
 });
 
+const recordPriceUpdate = catchAsync(async (req: Request, res: Response) => {
+    const result = await ProductService.recordPriceUpdate(req.body, req.user as IRequestUser);
+    sendResponse(res, { success: true, httpStatus: status.CREATED, message: "Price update recorded", data: result });
+});
+
+const getPriceUpdates = catchAsync(async (req: Request, res: Response) => {
+    const result = await ProductService.getPriceUpdates(req.user as IRequestUser);
+    sendResponse(res, { success: true, httpStatus: status.OK, message: "Price updates retrieved", data: result });
+});
+
 const updateProduct = catchAsync(async (req: Request, res: Response) => {
     const result = await ProductService.updateProduct(req.params.id as string, req.body, req.user as IRequestUser);
     sendResponse(res, {
@@ -100,6 +110,8 @@ export const ProductController = {
     createProduct,
     bulkUpsertProducts,
     bulkUpdateProductPrices,
+    recordPriceUpdate,
+    getPriceUpdates,
     updateProduct,
     deleteProduct,
 };
