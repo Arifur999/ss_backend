@@ -55,6 +55,7 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 s.company_name      AS supplier_company,
                 inv.id              AS inventory_id,
                 inv.dp_price        AS dp_price,
+                inv.available_qty   AS ledger_qty,
                 COALESCE(batch.opening_qty, 0)   AS batch_opening_qty,
                 COALESCE(po.order_qty, 0)        AS order_qty,
                 COALESCE(po.received_qty, 0)     AS received_qty,
@@ -128,8 +129,33 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 -- upcoming_qty stays in the SELECT below as its own column, which
                 -- is what the Inventory page's Upcoming column and its 'upcoming'
                 -- status badge read.
+                --
+                -- available_qty comes from inventory.available_qty - the running
+                -- ledger every stock movement writes to - and only falls back to
+                -- this computed figure for a product that has no inventory row at
+                -- all (created before the app maintained one).
+                --
+                -- It used to be the computed figure alone, and the two disagreed
+                -- for good. The computed one is opening + received - sold, which
+                -- knows nothing about a manual adjustment: five damaged chairs
+                -- adjusted to -5 never changed this page, forever, while the Sales
+                -- page (which reads the ledger column) dropped by five. Same
+                -- product, same second, two numbers, and the salesperson's
+                -- "Stock: 0" warning came from one while the stock report came
+                -- from the other.
+                --
+                -- The ledger can also go negative, which the computed figure
+                -- cannot express and which the owner needs to see: it means goods
+                -- were sold that had not arrived.
+                COALESCE(
+                    ledger_qty,
+                    GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty)
+                        + received_qty - sales_qty
+                ) AS available_qty,
+                -- Kept and returned beside it, so the two can be compared. The
+                -- difference between them is exactly the manual adjustments.
                 GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty)
-                    + received_qty - sales_qty AS available_qty,
+                    + received_qty - sales_qty AS computed_qty,
                 COALESCE(dp_price, cost_price, 0) AS unit_dp
             FROM base
         )
@@ -191,6 +217,12 @@ const getInventoryList = async (user: IRequestUser, options: InventoryListOption
             upcoming_qty: Number(row.upcoming_qty ?? 0),
             sales_qty: Number(row.sales_qty ?? 0),
             available_qty: Number(row.available_qty ?? 0),
+            // What opening + received - sold comes to, alongside the ledger figure
+            // above. They differ by exactly the manual adjustments, so shipping
+            // both means a discrepancy is visible rather than hidden - and if the
+            // ledger ever drifts (a stock path that forgets to maintain it), this
+            // is what a recalculation would compare against.
+            computed_qty: Number(row.computed_qty ?? 0),
             fifo_average_dp: Number(row.unit_dp ?? 0),
             fifo_stock_value: Number(row.stock_value ?? 0),
             products: {
