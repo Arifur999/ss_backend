@@ -66,6 +66,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Ceilings, so one service cannot take the box down with it.
+    #
+    # There were none. With shared_buffers=1GB plus work_mem per concurrent sort
+    # here and an unbounded Node heap next door, one heavy report alongside a leak
+    # was an OOM-kill - and the kernel picks the biggest process, which is
+    # Postgres. A container that hits its own limit dies alone and restarts.
+    #
+    # deploy.resources.limits, the Compose Spec form, honoured by docker compose
+    # v2 outside swarm. The first attempt used the legacy top-level mem_limit and
+    # cpus keys and this compose version rejected the file outright: it failed to
+    # parse, so nothing was recreated and the deploy went red with the old
+    # containers still serving.
+    #
+    # 7.8 GB box: 3 GB Postgres, 1.5 GB backend, 256 MB nginx, leaving room for
+    # the OS and the page cache effective_cache_size is counting on.
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '2.0'
     # Not published to the host on purpose - only the backend container
     # (over the internal compose network) can reach it.
 
@@ -100,6 +120,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: '1.5'
 
   nginx:
     # Minor pinned, not floating on the major: `nginx:alpine` meant a new major
@@ -120,6 +145,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
 
   # Not started by `docker compose up` (no other service depends on it) -
   # only runs on demand, e.g.:
