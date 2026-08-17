@@ -107,17 +107,43 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
         ),
         computed AS (
             SELECT *,
+                -- GREATEST, not a sum: a product carries its opening quantity on
+                -- its own row AND as an 'opening_stock' batch, and they describe
+                -- the same goods. Adding them counted the opening stock twice.
                 GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty) AS opening_qty,
+                -- What is actually on the floor: opening plus what has been
+                -- RECEIVED, less what has been sold. upcoming_qty is deliberately
+                -- not in here.
+                --
+                -- It used to be, and because received_qty is
+                -- SUM(GREATEST(pi.received_qty, r.received)) while upcoming_qty is
+                -- SUM(GREATEST(0, pi.qty - that)), the two add back up to the
+                -- quantity ORDERED. So available_qty was opening + ordered - sold:
+                -- a purchase order for fifty sofas that had not shipped yet showed
+                -- fifty in stock and put their whole value into Total Stock Value.
+                -- It also meant a sold-out product with an open order could never
+                -- report 'out_of_stock' or 'upcoming', because available_qty had
+                -- already swallowed the upcoming figure.
+                --
+                -- upcoming_qty stays in the SELECT below as its own column, which
+                -- is what the Inventory page's Upcoming column and its 'upcoming'
+                -- status badge read.
                 GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty)
-                    + received_qty + upcoming_qty - sales_qty AS available_qty,
+                    + received_qty - sales_qty AS available_qty,
                 COALESCE(dp_price, cost_price, 0) AS unit_dp
             FROM base
         )
         SELECT *, (available_qty * unit_dp) AS stock_value
         FROM computed
+        -- These three have to partition the rows exactly the way the Inventory
+        -- page's own getStatus() badges them, or filtering by one status returns
+        -- rows wearing another status's badge. Nothing on hand but stock on the
+        -- way reads as Upcoming, not Out of Stock - so 'upcoming' is only the
+        -- rows with no stock and something coming, and 'out_of_stock' is only the
+        -- rows with no stock and nothing coming.
         ${statusFilter === "available" ? Prisma.sql`WHERE available_qty > 0`
-            : statusFilter === "out_of_stock" ? Prisma.sql`WHERE available_qty <= 0`
-            : statusFilter === "upcoming" ? Prisma.sql`WHERE upcoming_qty > 0`
+            : statusFilter === "out_of_stock" ? Prisma.sql`WHERE available_qty <= 0 AND upcoming_qty <= 0`
+            : statusFilter === "upcoming" ? Prisma.sql`WHERE available_qty <= 0 AND upcoming_qty > 0`
             : Prisma.empty}
     `;
 };
