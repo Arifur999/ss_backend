@@ -36,7 +36,11 @@ const updateShareholder = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteShareholder = catchAsync(async (req: Request, res: Response) => {
-    const result = await ShareholderService.deleteShareholder(req.params.id as string, req.user as IRequestUser);
+    const result = await ShareholderService.deleteShareholder(
+        req.params.id as string,
+        req.user as IRequestUser,
+        req.body?.recycle
+    );
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

@@ -2,6 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { ICreateSupplierPayload, IUpdateSupplierPayload } from "./supplier.validation.js";
 
 const getAllSuppliers = async (user: IRequestUser) => {
@@ -32,7 +33,7 @@ const updateSupplier = async (id: string, payload: IUpdateSupplierPayload, user:
     });
 };
 
-const deleteSupplier = async (id: string, user: IRequestUser) => {
+const deleteSupplier = async (id: string, user: IRequestUser, recycleMeta?: IRecycleMeta) => {
     const existing = await prisma.supplier.findFirst({
         where: { id, owner_id: user.ownerId },
     });
@@ -53,7 +54,26 @@ const deleteSupplier = async (id: string, user: IRequestUser) => {
         );
     }
 
-    await prisma.supplier.delete({ where: { id } });
+    // Snapshot before the row goes, so the Recycle Bin can actually return it.
+    // The frontend already offered "deleted - restorable" for these, and the
+    // recycle-bin page already lists a tab for them, but no snapshot was ever
+    // written: the record was gone for good and the bin stayed empty.
+    await prisma.$transaction(async (tx) => {
+        await tx.recycleBinItem.create({
+            data: buildRecycleItemData({
+                user,
+                tableName: "suppliers",
+                row: existing,
+                meta: recycleMeta,
+                fallbackType: "suppliers",
+                fallbackTitle: String(existing.name ?? ""),
+                fallbackSubtitle: existing.company_name ?? "",
+                fallbackAmount: existing.opening_due,
+            }),
+        });
+
+        await tx.supplier.delete({ where: { id } });
+    });
 
     return { message: "Supplier deleted successfully" };
 };

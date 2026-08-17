@@ -3,6 +3,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { ICreateCustomerPayload, IUpdateCustomerPayload } from "./customer.validation.js";
 
@@ -61,7 +62,7 @@ const updateCustomer = async (id: string, payload: IUpdateCustomerPayload, user:
 
 // Mirrors the old guard_customer_deletes trigger: block deleting a customer
 // that still has sales or payments.
-const deleteCustomer = async (id: string, user: IRequestUser) => {
+const deleteCustomer = async (id: string, user: IRequestUser, recycleMeta?: IRecycleMeta) => {
     const existing = await prisma.customer.findFirst({
         where: { id, owner_id: user.ownerId },
     });
@@ -82,7 +83,26 @@ const deleteCustomer = async (id: string, user: IRequestUser) => {
         );
     }
 
-    await prisma.customer.delete({ where: { id } });
+    // Snapshot before the row goes, so the Recycle Bin can actually return it.
+    // The frontend already offered "deleted - restorable" for these, and the
+    // recycle-bin page already lists a tab for them, but no snapshot was ever
+    // written: the record was gone for good and the bin stayed empty.
+    await prisma.$transaction(async (tx) => {
+        await tx.recycleBinItem.create({
+            data: buildRecycleItemData({
+                user,
+                tableName: "customers",
+                row: existing,
+                meta: recycleMeta,
+                fallbackType: "customers",
+                fallbackTitle: String(existing.name ?? ""),
+                fallbackSubtitle: existing.phone ?? "",
+                fallbackAmount: existing.opening_due,
+            }),
+        });
+
+        await tx.customer.delete({ where: { id } });
+    });
 
     return { message: "Customer deleted successfully" };
 };

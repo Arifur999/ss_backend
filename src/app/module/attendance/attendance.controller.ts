@@ -40,7 +40,11 @@ const updateAttendance = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteAttendance = catchAsync(async (req: Request, res: Response) => {
-    const result = await AttendanceService.deleteAttendance(req.params.id as string, req.user as IRequestUser);
+    const result = await AttendanceService.deleteAttendance(
+        req.params.id as string,
+        req.user as IRequestUser,
+        req.body?.recycle
+    );
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

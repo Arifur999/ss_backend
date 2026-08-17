@@ -36,7 +36,11 @@ const updateSupplier = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteSupplier = catchAsync(async (req: Request, res: Response) => {
-    const result = await SupplierService.deleteSupplier(req.params.id as string, req.user as IRequestUser);
+    const result = await SupplierService.deleteSupplier(
+        req.params.id as string,
+        req.user as IRequestUser,
+        req.body?.recycle
+    );
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

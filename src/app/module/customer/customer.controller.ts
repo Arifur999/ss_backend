@@ -41,7 +41,11 @@ const updateCustomer = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteCustomer = catchAsync(async (req: Request, res: Response) => {
-    const result = await CustomerService.deleteCustomer(req.params.id as string, req.user as IRequestUser);
+    const result = await CustomerService.deleteCustomer(
+        req.params.id as string,
+        req.user as IRequestUser,
+        req.body?.recycle
+    );
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

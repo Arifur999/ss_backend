@@ -23,6 +23,12 @@ const RESTORABLE_TABLES = [
     "other_incomes",
     "customers",
     "suppliers",
+    // Added with the snapshots for these three: they were deletable and the
+    // recycle-bin page already had tabs for them, but nothing was ever written to
+    // restore FROM, so the tabs stayed empty and the records were gone for good.
+    "accounts",
+    "shareholders",
+    "attendance",
 ] as const;
 
 type RestorableTable = (typeof RESTORABLE_TABLES)[number];
@@ -45,6 +51,9 @@ const delegateFor = (tableName: RestorableTable): any => {
         case "other_incomes": return prisma.otherIncome;
         case "customers": return prisma.customer;
         case "suppliers": return prisma.supplier;
+        case "accounts": return prisma.account;
+        case "shareholders": return prisma.shareholder;
+        case "attendance": return prisma.attendance;
     }
 };
 

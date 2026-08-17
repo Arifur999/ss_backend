@@ -36,7 +36,11 @@ const updateAccount = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteAccount = catchAsync(async (req: Request, res: Response) => {
-    const result = await AccountService.deleteAccount(req.params.id as string, req.user as IRequestUser);
+    const result = await AccountService.deleteAccount(
+        req.params.id as string,
+        req.user as IRequestUser,
+        req.body?.recycle
+    );
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,

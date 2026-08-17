@@ -2,6 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { IUpsertAttendancePayload } from "./attendance.validation.js";
 
 const getAllAttendance = async (user: IRequestUser, filters: { employee_id?: string; from?: string; to?: string }) => {
@@ -93,7 +94,7 @@ const updateAttendance = async (id: string, payload: Record<string, any>, user: 
     });
 };
 
-const deleteAttendance = async (id: string, user: IRequestUser) => {
+const deleteAttendance = async (id: string, user: IRequestUser, recycleMeta?: IRecycleMeta) => {
     const existing = await prisma.attendance.findFirst({
         where: { id, owner_id: user.ownerId },
     });
@@ -102,7 +103,26 @@ const deleteAttendance = async (id: string, user: IRequestUser) => {
         throw new AppError(status.NOT_FOUND, "Attendance record not found");
     }
 
-    await prisma.attendance.delete({ where: { id } });
+    // Snapshot before the row goes, so the Recycle Bin can actually return it.
+    // The frontend already offered "deleted - restorable" for these, and the
+    // recycle-bin page already lists a tab for them, but no snapshot was ever
+    // written: the record was gone for good and the bin stayed empty.
+    await prisma.$transaction(async (tx) => {
+        await tx.recycleBinItem.create({
+            data: buildRecycleItemData({
+                user,
+                tableName: "attendance",
+                row: existing,
+                meta: recycleMeta,
+                fallbackType: "employees",
+                fallbackTitle: String(existing.employee_id ?? ""),
+                fallbackSubtitle: String(existing.date),
+                fallbackAmount: 0,
+            }),
+        });
+
+        await tx.attendance.delete({ where: { id } });
+    });
 
     return { message: "Attendance record deleted successfully" };
 };
