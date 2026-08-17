@@ -105,7 +105,23 @@ jobs:
              # leaving the live nginx untouched.
              docker compose run --rm --no-deps nginx nginx -t
              docker compose up -d --force-recreate nginx
-             docker image prune -f'
+             docker image prune -f
+             # The nightly backup and the weekly certificate renewal, installed
+             # from the repo rather than left to somebody typing them in.
+             #
+             # scripts/install-backup-cron.sh has existed for a while and nothing
+             # invoked it, so the schedule was in place only if a human had
+             # remembered - and nothing anywhere would have said if they had not.
+             # The script replaces its own crontab entries rather than adding a
+             # second copy, so running it on every deploy is a no-op once it is
+             # in. `|| true` because a missing crontab binary should not fail an
+             # otherwise good deploy; the check below reports it either way.
+             bash scripts/install-backup-cron.sh >/dev/null 2>&1 || true
+             if crontab -l 2>/dev/null | grep -q "managed-by:install-backup-cron"; then
+               echo "backup + cert-renewal cron: installed"
+             else
+               echo "WARNING: backup cron is NOT installed - run scripts/install-backup-cron.sh on the server"
+             fi'
 
       # Asked over the public address, the same way a customer reaches it, so
       # DNS, the certificate, nginx and the container all have to be working

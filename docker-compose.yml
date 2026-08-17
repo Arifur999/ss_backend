@@ -66,6 +66,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Ceilings, so one service cannot take the box down with it.
+    #
+    # There were none. With shared_buffers=1GB + work_mem=32MB per sort here and
+    # an unbounded Node heap next door, one heavy report running alongside a leak
+    # was an OOM-kill - and the kernel picks the biggest process, which is
+    # Postgres. A container that hits its own limit dies alone and restarts.
+    #
+    # 7.8 GB box: 3 GB Postgres (it asks for 1 GB of shared_buffers plus work_mem
+    # per concurrent sort), 1.5 GB backend, 256 MB nginx, leaving room for the OS
+    # and the page cache effective_cache_size is counting on.
+    mem_limit: 3g
+    cpus: 2.0
     # Not published to the host on purpose - only the backend container
     # (over the internal compose network) can reach it.
 
@@ -84,6 +96,9 @@ services:
     # env_file, so pinning it here settles both regardless of what .env says.
     environment:
       NODE_ENV: production
+      # Keeps V8 under the mem_limit below, so a runaway heap throws a JS
+      # OutOfMemory the logs can show rather than being SIGKILLed silently.
+      NODE_OPTIONS: --max-old-space-size=1280
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +115,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 90s
+    # See the note on postgres above. --max-old-space-size keeps V8 itself under
+    # the container ceiling, so a runaway heap throws a JS OutOfMemory the logs
+    # can show rather than being SIGKILLed with nothing recorded.
+    mem_limit: 1536m
+    cpus: 1.5
 
   nginx:
     # Minor pinned, not floating on the major: `nginx:alpine` meant a new major
@@ -120,6 +140,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
 
   # Not started by `docker compose up` (no other service depends on it) -
   # only runs on demand, e.g.:
