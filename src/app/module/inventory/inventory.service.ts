@@ -4,7 +4,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { pageSlice, type ListOptions } from "../../shared/listQuery.js";
-import { adjustInventoryLevel } from "./fifo.helpers.js";
+import { adjustInventoryLevel, settlePendingPreorderCosts } from "./fifo.helpers.js";
 import { IAdjustInventoryPayload } from "./inventory.validation.js";
 
 // Supabase join shape: inventory rows carry `products` relation key.
@@ -336,7 +336,7 @@ const adjustInventory = async (payload: IAdjustInventoryPayload, user: IRequestU
         );
 
         if (payload.qty_change > 0) {
-            await tx.inventoryBatch.create({
+            const batch = await tx.inventoryBatch.create({
                 data: {
                     owner_id: user.ownerId,
                     product_id: payload.product_id,
@@ -349,6 +349,21 @@ const adjustInventory = async (payload: IAdjustInventoryPayload, user: IRequestU
                     created_by: user.userId,
                 },
             });
+
+            // Price any preorder layers this stock now covers.
+            //
+            // Selling below zero stock creates a cost layer at whatever cost the
+            // client sent, which is 0 when the product has no rate yet - so the
+            // profit on those units is overstated by their whole real cost until
+            // stock arrives and settles them. createReceiveStockBatch calls this
+            // for a purchase receive, but manual stock-in never did: bring the
+            // goods in by adjustment rather than by PO and the zero-cost layers
+            // stayed at zero permanently.
+            await settlePendingPreorderCosts(
+                tx,
+                { id: batch.id, product_id: batch.product_id, remaining_qty: batch.remaining_qty, dp_price: batch.dp_price },
+                user
+            );
         } else if (payload.qty_change < 0) {
             let toRemove = Math.abs(payload.qty_change);
             const batches = await tx.inventoryBatch.findMany({
