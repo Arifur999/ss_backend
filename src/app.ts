@@ -104,7 +104,13 @@ app.get("/", async (req: Request, res: Response) => {
     });
 });
 
-app.use(globalErrorHandler);
+// notFound BEFORE globalErrorHandler, which is the order Express actually needs.
+//
+// It worked the other way round by accident: globalErrorHandler takes four
+// arguments, so Express treats it as an error handler and skips it in the normal
+// chain, letting notFound answer. But an error thrown from notFound itself had no
+// handler after it, and the reversed order says the opposite of what it does.
 app.use(notFound);
+app.use(globalErrorHandler);
 
 export default app;
