@@ -60,7 +60,9 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 COALESCE(po.order_qty, 0)        AS order_qty,
                 COALESCE(po.received_qty, 0)     AS received_qty,
                 COALESCE(po.upcoming_qty, 0)     AS upcoming_qty,
-                COALESCE(si.sales_qty, 0)        AS sales_qty
+                COALESCE(si.sales_qty, 0)        AS sales_qty,
+                COALESCE(layers.on_hand_qty, 0)   AS on_hand_qty,
+                COALESCE(layers.on_hand_cost, 0)  AS on_hand_cost
             FROM products p
             LEFT JOIN suppliers s ON s.id = p.supplier_id
             -- owner_id here as well: inventory is unique per (owner, product),
@@ -80,6 +82,21 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                   AND owner_id = ${user.ownerId}
                 GROUP BY product_id
             ) batch ON batch.product_id = p.id
+            -- The cost of what is actually still on hand, straight off the FIFO
+            -- layers: what each unsold unit was bought for, at the price its own
+            -- batch was bought at. This is what makes fifo_average_dp live up to
+            -- its name - it used to be COALESCE(inv.dp_price, p.cost_price), a
+            -- single current price, so when a DP rose from 8,000 to 10,000 the
+            -- older stock was revalued at the new price.
+            LEFT JOIN (
+                SELECT product_id,
+                       SUM(remaining_qty)              AS on_hand_qty,
+                       SUM(remaining_qty * dp_price)   AS on_hand_cost
+                FROM inventory_batches
+                WHERE owner_id = ${user.ownerId}
+                  AND remaining_qty > 0
+                GROUP BY product_id
+            ) layers ON layers.product_id = p.id
             LEFT JOIN (
                 SELECT pi.product_id,
                        SUM(pi.qty) AS order_qty,
@@ -103,7 +120,17 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
             ) si ON si.product_id = p.id
             WHERE p.owner_id = ${user.ownerId}
               AND p.deleted_at IS NULL
-              AND p.is_active = true
+              -- No is_active filter. It used to also require p.is_active, which
+              -- meant marking a product inactive removed its entire quantity and
+              -- value from this page and from the Total Stock Value tile - while
+              -- the goods were still on the shop floor, still sellable, and still
+              -- costed by FIFO on any sale. "Inactive" means "stop offering it",
+              -- not "pretend the stock is gone".
+              --
+              -- A product with no stock and no history contributes nothing to
+              -- either figure anyway, so this does not clutter the page with
+              -- retired lines: they show a zero and sort to the bottom of any
+              -- value-ordered view.
               ${like ? Prisma.sql`AND (p.name ILIKE ${like} OR p.product_code ILIKE ${like})` : Prisma.empty}
         ),
         computed AS (
@@ -156,9 +183,20 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 -- difference between them is exactly the manual adjustments.
                 GREATEST(COALESCE(product_opening_qty, 0), batch_opening_qty)
                     + received_qty - sales_qty AS computed_qty,
-                COALESCE(dp_price, cost_price, 0) AS unit_dp
+                -- A real weighted average of what the unsold units cost, from the
+                -- FIFO layers still holding stock. Falls back to the manual DP
+                -- override, then the product's cost price, for a product with no
+                -- layers left (all sold, or never batched).
+                CASE WHEN on_hand_qty > 0
+                     THEN on_hand_cost / on_hand_qty
+                     ELSE COALESCE(dp_price, cost_price, 0)
+                END AS unit_dp
             FROM base
         )
+        -- Deliberately the shown quantity times the shown unit price, not
+        -- on_hand_cost. The two agree whenever the ledger and the layers agree,
+        -- and when they do not, a row whose Value is not its Qty x its DP reads as
+        -- a bug - the owner has to be able to redo this line on paper.
         SELECT *, (available_qty * unit_dp) AS stock_value
         FROM computed
         -- These three have to partition the rows exactly the way the Inventory
@@ -360,9 +398,25 @@ const setDpPrice = async (productId: string, dpPrice: number | null, user: IRequ
         // cost_price 0 and counted no profit. Now that a rate exists, fill those
         // lines in so their profit appears in the dashboard and reports; lines
         // that already carry a cost keep it.
+        //
+        // Bounded to the current month. It had no date bound at all, so setting a
+        // DP today rewrote the cost of EVERY historical sale line for the product
+        // that had none - changing last March's gross profit, with no undo and no
+        // history row. A month the owner had already printed and filed would not
+        // reproduce. Filling in the month still in progress is the case this was
+        // written for (a product received and sold before its rate was entered);
+        // closed months stay closed.
         if (dpPrice !== null && dpPrice > 0) {
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
             await tx.saleItem.updateMany({
-                where: { owner_id: user.ownerId, product_id: productId, cost_price: 0 },
+                where: {
+                    owner_id: user.ownerId,
+                    product_id: productId,
+                    cost_price: 0,
+                    sale: { date: { gte: monthStart } },
+                },
                 data: { cost_price: dpPrice },
             });
         }
