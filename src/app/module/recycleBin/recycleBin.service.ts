@@ -3,6 +3,7 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { consumeFifoForSaleItem } from "../inventory/fifo.helpers.js";
 
 // Whitelist of tables a recycle-bin snapshot may be restored into,
 // mapped to their Prisma delegates.
@@ -132,9 +133,67 @@ const restoreItem = async (id: string, user: IRequestUser) => {
             await tx.sale.create({ data: row as Prisma.SaleUncheckedCreateInput });
 
             for (const rawItem of sale_items ?? []) {
-                await tx.saleItem.create({
+                const saleItem = await tx.saleItem.create({
                     data: reviveRow("sale_items", rawItem, user.ownerId) as Prisma.SaleItemUncheckedCreateInput,
                 });
+
+                // Take the stock back out and re-consume the FIFO layers.
+                //
+                // Restore recreated the sale, its items, its payments and its
+                // deliveries and stopped there. But deleting the sale had rolled
+                // the inventory forward and released the FIFO layers, and
+                // cost_layers is stripped from the snapshot by NESTED_KEYS, so
+                // restoring put the sale back on the books while leaving the goods
+                // in stock and the batches unconsumed.
+                //
+                // Concretely: sell 10 chairs from a batch of 10 at Tk 3,000, delete
+                // the sale (batch back to 10 remaining), restore it. The sale is on
+                // the books, the batch still says 10, and the NEXT sale of 10
+                // chairs is costed from stock that was already sold - booking that
+                // Tk 30,000 of cost twice and leaving available_qty 10 too high.
+                if (saleItem.product_id) {
+                    await consumeFifoForSaleItem(
+                        tx,
+                        {
+                            saleId: saleItem.sale_id,
+                            saleItemId: saleItem.id,
+                            productId: saleItem.product_id,
+                            qty: saleItem.qty,
+                            // The cost the sale was originally costed at, so a
+                            // restore reproduces the profit the sale reported
+                            // rather than re-pricing it at today's stock.
+                            fallbackCost: Number(saleItem.cost_price ?? 0),
+                        },
+                        user
+                    );
+
+                    const inventory = await tx.inventory.upsert({
+                        where: { owner_id_product_id: { owner_id: user.ownerId, product_id: saleItem.product_id } },
+                        create: {
+                            owner_id: user.ownerId,
+                            product_id: saleItem.product_id,
+                            available_qty: -saleItem.qty,
+                            upcoming_qty: 0,
+                        },
+                        update: { available_qty: { decrement: saleItem.qty } },
+                    });
+
+                    await tx.inventoryHistory.create({
+                        data: {
+                            owner_id: user.ownerId,
+                            product_id: saleItem.product_id,
+                            product_name: saleItem.product_name,
+                            change_type: "sales_out",
+                            qty_change: -saleItem.qty,
+                            qty_before: inventory.available_qty + saleItem.qty,
+                            qty_after: inventory.available_qty,
+                            reference_id: saleItem.sale_id,
+                            reference_type: "sale_restore",
+                            notes: "Sale restored from recycle bin",
+                            created_by: user.userId,
+                        },
+                    });
+                }
             }
             for (const rawPayment of sale_payments ?? []) {
                 await tx.salePayment.create({
