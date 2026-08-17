@@ -26,8 +26,22 @@ COPY --from=build /app/dist ./dist
 # `npx prisma migrate deploy` can run inside this same image on deploy.
 COPY prisma.config.ts ./
 COPY prisma ./prisma
+
+# su-exec drops privileges for the server process below. ~20KB, no dependencies.
+RUN apk add --no-cache su-exec
+
 EXPOSE 5000
 # `prisma migrate deploy` runs on every container start, before the server -
 # it's idempotent (a no-op if nothing's pending), and platforms like Railway
 # don't offer the SSH access the VPS plan used to run migrations manually.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+#
+# The migration stays as root; the SERVER runs as `node`.
+#
+# Nothing was dropping privileges at all, so a remote-code bug in any dependency
+# ran as root inside the container - and the compose bind-mounts make that a short
+# hop to files on the host. The obvious fix, a plain `USER node`, would also move
+# the migration to a non-root user, and that runs on every single container start
+# on a live shop's database. This way the long-lived process that actually faces
+# the internet is unprivileged, while the two seconds of migration keeps the exact
+# path that has been working in production all along.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec su-exec node node dist/server.js"]
