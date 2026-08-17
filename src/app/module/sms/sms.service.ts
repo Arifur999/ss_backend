@@ -122,7 +122,28 @@ const sendSms = async (payload: ISendSmsPayload, user: IRequestUser) => {
     const creditsNeeded = segments * numbers.length;
 
     const wallet = await getOrCreateWallet(user.ownerId);
-    if (wallet.balance < creditsNeeded) {
+
+    // Take the credits BEFORE calling the gateway, and take them with a
+    // conditional update rather than a read followed by a write.
+    //
+    // The old order was: read the balance, compare it, call the paid gateway,
+    // then decrement. Two sends from the same owner at the same moment both
+    // passed the comparison and both decremented, so the wallet went negative
+    // and the platform paid MRAM for the overspend. That is not hypothetical -
+    // CustomerDashboard fires one send per customer in a loop.
+    //
+    // `updateMany` with the balance in the WHERE clause makes the check and the
+    // decrement one statement, so the database decides who gets the last
+    // credits: count 1 means they were ours, count 0 means somebody else took
+    // them and nothing was deducted.
+    const reserved = await prisma.smsWallet.updateMany({
+        where: { owner_id: user.ownerId, balance: { gte: creditsNeeded } },
+        data: { balance: { decrement: creditsNeeded } },
+    });
+
+    if (reserved.count !== 1) {
+        // wallet.balance is what we read a moment ago - good enough to tell the
+        // operator how short they are, even if a concurrent send moved it since.
         throw new AppError(
             status.PAYMENT_REQUIRED,
             `Not enough SMS credits. This batch needs ${creditsNeeded} (${segments} segment(s) x ${numbers.length} recipient(s)), but your balance is ${wallet.balance}.`
@@ -132,43 +153,45 @@ const sendSms = async (payload: ISendSmsPayload, user: IRequestUser) => {
     const result = await sendViaGateway(numbers.join("+"), message, "transactional");
 
     if (!result.success) {
-        // Log the failed attempt but charge nothing.
-        await prisma.smsMessage.create({
-            data: {
-                owner_id: user.ownerId,
-                recipient_count: numbers.length,
-                segments,
-                credits_used: 0,
-                message,
-                is_unicode: unicode,
-                status: "failed",
-                shoot_id: "",
-                response: result.error || result.raw || "Failed",
-            },
-        });
+        // Nothing was sent, so put the reserved credits back and log the attempt
+        // as costing nothing. One transaction: a refund without its log entry
+        // would leave the balance unexplained.
+        await prisma.$transaction([
+            prisma.smsWallet.update({
+                where: { owner_id: user.ownerId },
+                data: { balance: { increment: creditsNeeded } },
+            }),
+            prisma.smsMessage.create({
+                data: {
+                    owner_id: user.ownerId,
+                    recipient_count: numbers.length,
+                    segments,
+                    credits_used: 0,
+                    message,
+                    is_unicode: unicode,
+                    status: "failed",
+                    shoot_id: "",
+                    response: result.error || result.raw || "Failed",
+                },
+            }),
+        ]);
         throw new AppError(status.BAD_GATEWAY, result.error || "Could not send SMS");
     }
 
-    // Success: deduct credits and log the batch atomically.
-    const [, smsMessage] = await prisma.$transaction([
-        prisma.smsWallet.update({
-            where: { owner_id: user.ownerId },
-            data: { balance: { decrement: creditsNeeded } },
-        }),
-        prisma.smsMessage.create({
-            data: {
-                owner_id: user.ownerId,
-                recipient_count: numbers.length,
-                segments,
-                credits_used: creditsNeeded,
-                message,
-                is_unicode: unicode,
-                status: "sent",
-                shoot_id: result.shootId,
-                response: result.raw,
-            },
-        }),
-    ]);
+    // The credits are already gone; this only records what they bought.
+    const smsMessage = await prisma.smsMessage.create({
+        data: {
+            owner_id: user.ownerId,
+            recipient_count: numbers.length,
+            segments,
+            credits_used: creditsNeeded,
+            message,
+            is_unicode: unicode,
+            status: "sent",
+            shoot_id: result.shootId,
+            response: result.raw,
+        },
+    });
 
     await logAdminActivity({
         ownerId: user.ownerId,
