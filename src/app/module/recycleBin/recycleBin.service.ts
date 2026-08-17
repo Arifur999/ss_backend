@@ -153,12 +153,66 @@ const restoreItem = async (id: string, user: IRequestUser) => {
 
             for (const rawItem of purchase_items ?? []) {
                 const { purchase_receives, ...itemRaw } = rawItem;
-                await tx.purchaseItem.create({
+                const item = await tx.purchaseItem.create({
                     data: reviveRow("purchase_items", itemRaw, user.ownerId) as Prisma.PurchaseItemUncheckedCreateInput,
                 });
                 for (const rawReceive of purchase_receives ?? []) {
                     await tx.purchaseReceive.create({
                         data: reviveRow("purchase_receives", rawReceive, user.ownerId) as Prisma.PurchaseReceiveUncheckedCreateInput,
+                    });
+                }
+
+                // Put the stock back, the mirror of what deletePurchase took out.
+                //
+                // Restore recreated the purchase, its items (carrying their
+                // received_qty) and its receives, but not the stock those receives
+                // represent - so a restored purchase read as received while the
+                // goods were missing from inventory and had no FIFO layer to be
+                // costed from.
+                //
+                // deletePurchase refuses when any of the received stock has been
+                // sold, so a purchase in the bin always had fully-unconsumed
+                // batches. That is what makes this exact: remaining_qty is the
+                // full received_qty, with nothing to reconstruct.
+                if (item.product_id && item.received_qty > 0) {
+                    await tx.inventory.upsert({
+                        where: { owner_id_product_id: { owner_id: user.ownerId, product_id: item.product_id } },
+                        create: {
+                            owner_id: user.ownerId,
+                            product_id: item.product_id,
+                            available_qty: item.received_qty,
+                            upcoming_qty: 0,
+                        },
+                        update: { available_qty: { increment: item.received_qty } },
+                    });
+
+                    await tx.inventoryBatch.create({
+                        data: {
+                            owner_id: user.ownerId,
+                            product_id: item.product_id,
+                            purchase_item_id: item.id,
+                            source_type: "purchase_receive",
+                            received_qty: item.received_qty,
+                            remaining_qty: item.received_qty,
+                            dp_price: item.actual_dp,
+                            mrp_price: 0,
+                            received_date: new Date(),
+                            created_by: user.userId,
+                        },
+                    });
+
+                    await tx.inventoryHistory.create({
+                        data: {
+                            owner_id: user.ownerId,
+                            product_id: item.product_id,
+                            product_name: item.product_name,
+                            change_type: "adjustment",
+                            qty_change: item.received_qty,
+                            reference_id: item.purchase_id,
+                            reference_type: "purchase_restore",
+                            notes: "Purchase restored from recycle bin",
+                            created_by: user.userId,
+                        },
                     });
                 }
             }

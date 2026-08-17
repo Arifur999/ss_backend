@@ -512,6 +512,62 @@ const deletePurchase = async (id: string, user: IRequestUser, recycleMeta?: IRec
     }
 
     await prisma.$transaction(async (tx) => {
+        // Take the received stock back out, and refuse if any of it has been sold.
+        //
+        // This used to delete the purchase and leave the stock behind entirely -
+        // the comment said FIFO batches "keep their stock but lose the purchase
+        // link (SetNull), matching the old Supabase behaviour", which meant a
+        // deleted purchase corrupted the numbers three different ways at once.
+        // For a PO of 100 units, all received, 30 sold:
+        //
+        //   Inventory page   the received_qty subquery lost its rows, so
+        //                    available went from 70 to -30
+        //   Sales page       inventory.available_qty untouched, still 70
+        //   FIFO             70 units of orphaned batches, still costing sales
+        //
+        // Refusing when the goods are already sold is the same rule deleteReceive
+        // uses, and the same rule deletePurchaseItem has always used for a single
+        // line. It also keeps delete and restore symmetrical: nothing consumed
+        // means the batches can be removed exactly and rebuilt exactly.
+        const batches = await tx.inventoryBatch.findMany({
+            where: { owner_id: user.ownerId, purchase_item_id: { in: existing.purchase_items.map((item) => item.id) } },
+        });
+
+        const consumed = batches.reduce((sum, batch) => sum + (batch.received_qty - batch.remaining_qty), 0);
+        if (consumed > 0) {
+            throw new AppError(
+                status.CONFLICT,
+                `Cannot delete this purchase: ${consumed} unit(s) received against it have already been sold. Delete or edit those sales first.`
+            );
+        }
+
+        for (const item of existing.purchase_items) {
+            if (!item.product_id || item.received_qty <= 0) continue;
+
+            await tx.inventory.updateMany({
+                where: { owner_id: user.ownerId, product_id: item.product_id },
+                data: { available_qty: { decrement: item.received_qty } },
+            });
+
+            await tx.inventoryHistory.create({
+                data: {
+                    owner_id: user.ownerId,
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    change_type: "adjustment",
+                    qty_change: -item.received_qty,
+                    reference_id: existing.id,
+                    reference_type: "purchase_delete",
+                    notes: `Purchase ${existing.si_no} deleted`,
+                    created_by: user.userId,
+                },
+            });
+        }
+
+        if (batches.length > 0) {
+            await tx.inventoryBatch.deleteMany({ where: { id: { in: batches.map((batch) => batch.id) } } });
+        }
+
         await tx.recycleBinItem.create({
             data: buildRecycleItemData({
                 user,
@@ -524,8 +580,7 @@ const deletePurchase = async (id: string, user: IRequestUser, recycleMeta?: IRec
                 fallbackAmount: existing.net_amount,
             }),
         });
-        // Items + receives cascade; FIFO batches keep their stock but lose
-        // the purchase link (SetNull), matching the old Supabase behaviour.
+        // Items and receives cascade.
         await tx.purchase.delete({ where: { id } });
     });
 
