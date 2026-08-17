@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { checkAuth } from "../../middleware/checkAuth.js";
-import { authAttemptLimiter, authEmailLimiter, registerLimiter } from "../../middleware/rateLimit.js";
+import { authAttemptLimiter, authEmailLimiter, registerLimiter, sessionLimiter } from "../../middleware/rateLimit.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { AuthController } from "./auth.controller.js";
 import { forgotPasswordZodSchema, loginZodSchema, registerOwnerZodSchema, resendOtpZodSchema, resetPasswordZodSchema, verifyOtpZodSchema } from "./auth.validation.js";
@@ -19,8 +19,8 @@ router.post("/resend-otp", authEmailLimiter, validateRequest(resendOtpZodSchema)
 router.post("/forgot-password", authEmailLimiter, validateRequest(forgotPasswordZodSchema), AuthController.forgotPassword);
 router.post("/reset-password", authAttemptLimiter, validateRequest(resetPasswordZodSchema), AuthController.resetPassword);
 router.get("/me", checkAuth(), AuthController.getMe);
-router.post("/refresh-token", AuthController.refreshToken);
-router.post("/logout", AuthController.logoutUser);
+router.post("/refresh-token", sessionLimiter, AuthController.refreshToken);
+router.post("/logout", sessionLimiter, AuthController.logoutUser);
 router.post("/touch-activity", checkAuth(), AuthController.touchActivity);
 
 export const AuthRoutes = router;

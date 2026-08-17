@@ -58,3 +58,38 @@ export const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     limit: 10,
 });
+
+/**
+ * The unauthenticated routes that are not guessing at anything: refresh-token
+ * and logout.
+ *
+ * Neither can compromise an account, so the ceiling is much higher than the
+ * guessing limiters - but /refresh-token was the cheapest unauthenticated
+ * DB-touching endpoint on the box (a JWT verify, a user lookup and two cookie
+ * writes per call), and it had no limit at all. This is about load, not
+ * credentials.
+ *
+ * 60 in fifteen minutes is far above real use: a session refreshes on a timer
+ * measured in minutes, and a tab left open all day does not approach it.
+ */
+export const sessionLimiter = rateLimit({
+    ...sharedOptions,
+    windowMs: 15 * 60 * 1000,
+    limit: 60,
+});
+
+/**
+ * Image upload. Authenticated, but every call costs Cloudinary quota, so a
+ * compromised or careless staff account should not be able to run through it.
+ * Keyed by IP like the rest; twenty images in fifteen minutes is more than any
+ * real product-photo session.
+ */
+export const uploadLimiter = rateLimit({
+    ...sharedOptions,
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    message: {
+        success: false,
+        message: "Too many uploads. Please wait a few minutes and try again.",
+    },
+});

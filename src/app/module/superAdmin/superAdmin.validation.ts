@@ -21,3 +21,16 @@ export const updateSubscriptionPaymentZodSchema = z.object({
 
 export type IUpdateOwnerSubscriptionPayload = z.infer<typeof updateOwnerSubscriptionZodSchema>;
 export type IUpdateSubscriptionPaymentPayload = z.infer<typeof updateSubscriptionPaymentZodSchema>;
+
+/**
+ * Confirmation for wiping an owner's operational data.
+ *
+ * The route had no schema, so `password: undefined` reached bcrypt.compare and
+ * threw a 500 rather than being rejected as a bad request - on the one endpoint
+ * that deletes a customer's entire history.
+ */
+export const resetOwnerDataZodSchema = z.object({
+    password: z.string("Password must be string").min(1, "Your password is required to confirm this reset"),
+});
+
+export type IResetOwnerDataPayload = z.infer<typeof resetOwnerDataZodSchema>;

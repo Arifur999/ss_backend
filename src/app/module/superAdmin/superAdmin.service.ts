@@ -179,8 +179,14 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
 // Resets an owner's workspace to a clean slate: deletes ALL operational data
 // (products, sales, purchases, customers, suppliers, accounts, expenses,
 // employees, loans, etc.) but keeps the user account, their subscription/plan
-// (stays exactly as-is) and their business settings (name/logo). Requires the
-// OWNER's own password as a confirmation gate.
+// (stays exactly as-is) and their business settings (name/logo).
+//
+// Gated on the SUPER ADMIN's own password - the person performing the action.
+// It used to compare against the OWNER's password, which made this endpoint a
+// password oracle: a super admin could put any guess in the confirmation box and
+// the response told them whether it was that customer's password, with no
+// attempt cap. It was also unusable as designed, since a super admin does not
+// know the owner's password.
 const resetOwnerData = async (ownerId: string, password: string, admin: IRequestUser) => {
     const owner = await prisma.user.findFirst({
         where: { id: ownerId, role: Role.owner },
@@ -190,7 +196,12 @@ const resetOwnerData = async (ownerId: string, password: string, admin: IRequest
         throw new AppError(status.NOT_FOUND, "Owner not found");
     }
 
-    const isPasswordValid = await bcrypt.compare(password, owner.password);
+    const actor = await prisma.user.findUnique({ where: { id: admin.userId } });
+    if (!actor) {
+        throw new AppError(status.UNAUTHORIZED, "Session no longer valid - please sign in again.");
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, actor.password);
     if (!isPasswordValid) {
         throw new AppError(status.UNAUTHORIZED, "Incorrect password - reset cancelled.");
     }

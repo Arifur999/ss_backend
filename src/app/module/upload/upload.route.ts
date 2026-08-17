@@ -4,6 +4,7 @@ import { multerUpload } from "../../../config/multer.config.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { checkAuth } from "../../middleware/checkAuth.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
+import { uploadLimiter } from "../../middleware/rateLimit.js";
 import catchAsync from "../../shared/catchAsync.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 
@@ -15,6 +16,7 @@ router.post(
     "/image",
     checkAuth(),
     checkSubscription,
+    uploadLimiter,
     multerUpload.single("image"),
     catchAsync(async (req: Request, res: Response) => {
         if (!req.file) {
