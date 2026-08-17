@@ -1,5 +1,6 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
+import { roundTaka } from "../../shared/money.js";
 
 // Server-side port of the old client-side src/lib/fifoInventory.ts.
 // Every function takes a Prisma transaction client so callers can compose
@@ -20,9 +21,13 @@ export const updateSaleItemAverageCost = async (tx: Tx, saleItemId: string) => {
     const cost = layers.reduce((sum, layer) => sum + num(layer.cost_amount), 0);
     if (qty <= 0) return;
 
+    // Whole taka. This is a total divided by a quantity, so it is the one
+    // derived figure on the server that reliably produced paisa: layers of
+    // 100 + 101 + 101 over three units stored 100.666..., and every profit
+    // figure on every report multiplies this back up by the quantity.
     await tx.saleItem.update({
         where: { id: saleItemId },
-        data: { cost_price: cost / qty },
+        data: { cost_price: roundTaka(cost / qty) },
     });
 };
 
