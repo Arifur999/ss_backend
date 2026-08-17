@@ -50,6 +50,16 @@ const receivePurchaseItem = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const receiveAllPurchaseItems = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.receiveAllPurchaseItems(req.params.id as string, req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Purchase received into stock",
+        data: result,
+    });
+});
+
 const updateReceive = catchAsync(async (req: Request, res: Response) => {
     const result = await PurchaseService.updateReceive(
         req.params.receiveId as string,
@@ -131,6 +141,7 @@ export const PurchaseController = {
     createPurchase,
     updatePurchase,
     receivePurchaseItem,
+    receiveAllPurchaseItems,
     updateReceive,
     deleteReceive,
     setItemReceivedQty,

@@ -102,3 +102,17 @@ export type IReceivePurchaseItemPayload = z.infer<typeof receivePurchaseItemZodS
 
 export type IUpdatePurchaseItemPayload = z.infer<typeof updatePurchaseItemZodSchema>;
 export type ISetItemReceivedQtyPayload = z.infer<typeof setItemReceivedQtyZodSchema>;
+
+/**
+ * Receive every outstanding line on a purchase at once.
+ *
+ * No quantities: it receives exactly what is still outstanding on each line, so
+ * calling it twice is not a double receive.
+ */
+export const receiveAllZodSchema = z.object({
+    receive_date: z.string("Receive date must be string (YYYY-MM-DD)").min(1, "Receive date is required"),
+    receiver_name: z.string("Receiver name must be string").nullable().optional().transform((value) => value ?? ""),
+    notes: z.string("Notes must be string").optional(),
+});
+
+export type IReceiveAllPayload = z.infer<typeof receiveAllZodSchema>;

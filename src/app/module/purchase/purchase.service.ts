@@ -1,4 +1,5 @@
 import status from "http-status";
+import { Prisma } from "../../../generated/prisma/client.js";
 import { ShippingStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
@@ -30,6 +31,35 @@ const getAllPurchases = async (user: IRequestUser, statuses?: string[], options:
     });
 };
 
+/**
+ * The requested SI number, or the next free one after it.
+ *
+ * Mirrors resolveInvoiceNo on the sale side, and for the same reason. The client
+ * generates these as PO-YYMM plus four random digits - 9,000 slots a month, so by
+ * the birthday bound a workspace placing ~150 orders in a month has better than a
+ * 70% chance of at least one collision.
+ *
+ * The sale side already survived that by suffixing. The purchase side threw a 409
+ * instead, and PurchaseOrders seeds si_no into form state once and only
+ * regenerates it AFTER a successful save - so the retry resubmitted the identical
+ * colliding number and failed again until somebody edited the field by hand.
+ *
+ * Suffixing is invisible in the normal case: it only appears when the number was
+ * genuinely taken, and then the operator sees PO-2608-1234-1 rather than an error.
+ */
+const resolveSiNo = async (tx: Prisma.TransactionClient, ownerId: string, requested: string) => {
+    let candidate = requested;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        const existing = await tx.purchase.findUnique({
+            where: { owner_id_si_no: { owner_id: ownerId, si_no: candidate } },
+            select: { id: true },
+        });
+        if (!existing) return candidate;
+        candidate = `${requested}-${attempt + 1}`;
+    }
+    return `${requested}-${Date.now()}`;
+};
+
 const createPurchase = async (payload: ICreatePurchasePayload, user: IRequestUser) => {
     const { items, ...purchaseData } = payload;
 
@@ -50,18 +80,11 @@ const createPurchase = async (payload: ICreatePurchasePayload, user: IRequestUse
         }
     }
 
-    const existing = await prisma.purchase.findUnique({
-        where: { owner_id_si_no: { owner_id: user.ownerId, si_no: payload.si_no } },
-    });
-
-    if (existing) {
-        throw new AppError(status.CONFLICT, "A purchase with this SI no already exists");
-    }
-
     return prisma.$transaction(async (tx) => {
         const purchase = await tx.purchase.create({
             data: {
                 ...purchaseData,
+                si_no: await resolveSiNo(tx, user.ownerId, purchaseData.si_no),
                 date: new Date(purchaseData.date),
                 owner_id: user.ownerId,
                 created_by: user.userId,
@@ -103,9 +126,180 @@ const updatePurchase = async (id: string, payload: IUpdatePurchasePayload, user:
     });
 };
 
-// The old client-side saveReceive flow (6 separate requests) as one transaction:
-// receive row -> item received_qty -> inventory level -> FIFO batch (+preorder
-// settlement) -> inventory history -> purchase shipping status.
+/** Recalculate a purchase's shipping status from the state of all its items. */
+const refreshShippingStatus = async (tx: Prisma.TransactionClient, purchaseId: string) => {
+    const allItems = await tx.purchaseItem.findMany({
+        where: { purchase_id: purchaseId },
+        select: { qty: true, received_qty: true },
+    });
+    const allReceived = allItems.every((row) => row.received_qty >= row.qty);
+    const someReceived = allItems.some((row) => row.received_qty > 0);
+
+    return tx.purchase.update({
+        where: { id: purchaseId },
+        data: {
+            shipping_status: allReceived
+                ? ShippingStatus.received
+                : someReceived
+                    ? ShippingStatus.partial
+                    : ShippingStatus.pending,
+        },
+        include: purchaseInclude,
+    });
+};
+
+type ReceivableItem = {
+    id: string;
+    product_id: string | null;
+    product_name: string;
+    received_qty: number;
+    actual_dp: Prisma.Decimal | number;
+    dp_price: Prisma.Decimal | number;
+    product?: { selling_price: Prisma.Decimal | number } | null;
+};
+
+/**
+ * Receiving one line, inside a caller-supplied transaction.
+ *
+ * The old client-side saveReceive flow (6 separate requests) as one unit: receive
+ * row -> item received_qty -> inventory level -> FIFO batch (+preorder
+ * settlement) -> inventory history. The status refresh is the caller's job, so
+ * receiving several lines can do it once at the end.
+ */
+const receiveItemInTx = async (
+    tx: Prisma.TransactionClient,
+    purchase: { id: string; si_no: string },
+    item: ReceivableItem,
+    payload: { receive_date: string; receiver_name?: string; received_qty: number; condition?: IReceivePurchaseItemPayload["condition"]; notes?: string },
+    user: IRequestUser
+) => {
+    const receiveRow = await tx.purchaseReceive.create({
+        data: {
+            owner_id: user.ownerId,
+            purchase_id: purchase.id,
+            purchase_item_id: item.id,
+            receive_date: new Date(payload.receive_date),
+            receiver_name: payload.receiver_name ?? "",
+            received_qty: payload.received_qty,
+            condition: payload.condition,
+            notes: payload.notes ?? "",
+            created_by: user.userId,
+        },
+    });
+
+    await tx.purchaseItem.update({
+        where: { id: item.id },
+        data: { received_qty: item.received_qty + payload.received_qty },
+    });
+
+    const inventory = await tx.inventory.findUnique({
+        where: { owner_id_product_id: { owner_id: user.ownerId, product_id: item.product_id! } },
+    });
+
+    if (inventory) {
+        await tx.inventory.update({
+            where: { id: inventory.id },
+            data: {
+                available_qty: inventory.available_qty + payload.received_qty,
+                upcoming_qty: Math.max(0, inventory.upcoming_qty - payload.received_qty),
+            },
+        });
+    } else {
+        await tx.inventory.create({
+            data: {
+                owner_id: user.ownerId,
+                product_id: item.product_id!,
+                available_qty: payload.received_qty,
+                upcoming_qty: 0,
+            },
+        });
+    }
+
+    await createReceiveStockBatch(
+        tx,
+        {
+            productId: item.product_id!,
+            purchaseItemId: item.id,
+            purchaseReceiveId: receiveRow.id,
+            qty: payload.received_qty,
+            dpPrice: Number(item.actual_dp) || Number(item.dp_price) || 0,
+            mrpPrice: Number(item.product?.selling_price ?? 0),
+            receiveDate: new Date(payload.receive_date),
+        },
+        user
+    );
+
+    await tx.inventoryHistory.create({
+        data: {
+            owner_id: user.ownerId,
+            product_id: item.product_id!,
+            product_name: item.product_name,
+            change_type: "purchase_in",
+            qty_change: payload.received_qty,
+            qty_before: inventory?.available_qty ?? 0,
+            qty_after: (inventory?.available_qty ?? 0) + payload.received_qty,
+            reference_id: purchase.id,
+            reference_type: "purchase",
+            notes: `Received from purchase ${purchase.si_no}`,
+            created_by: user.userId,
+        },
+    });
+};
+
+/**
+ * Receive every outstanding line on a purchase, in one transaction.
+ *
+ * The Purchase Orders page offered "save and receive into stock" by creating the
+ * purchase and then looping receivePurchaseItem once per line. A failure on item
+ * 3 of 5 left items 1-2 in stock and 3-5 not, and the error carried no indication
+ * of which had landed - so the operator could not tell what to do next without
+ * reading the ledger line by line.
+ *
+ * One call, one transaction: either the whole order is in stock or none of it is.
+ */
+const receiveAllPurchaseItems = async (
+    purchaseId: string,
+    payload: { receive_date: string; receiver_name?: string; notes?: string },
+    user: IRequestUser
+) => {
+    const purchase = await prisma.purchase.findFirst({
+        where: { id: purchaseId, owner_id: user.ownerId },
+        include: {
+            purchase_items: { include: { product: { select: { selling_price: true } } } },
+        },
+    });
+
+    if (!purchase) {
+        throw new AppError(status.NOT_FOUND, "Purchase not found");
+    }
+
+    // Only what is still outstanding, so calling this twice is not a double
+    // receive - the second call finds nothing left and only refreshes the status.
+    const outstanding = purchase.purchase_items
+        .filter((item) => item.product_id && item.qty > item.received_qty)
+        .map((item) => ({ item, qty: item.qty - item.received_qty }));
+
+    return prisma.$transaction(async (tx) => {
+        for (const { item, qty } of outstanding) {
+            await receiveItemInTx(
+                tx,
+                purchase,
+                item,
+                {
+                    receive_date: payload.receive_date,
+                    receiver_name: payload.receiver_name,
+                    received_qty: qty,
+                    condition: "good",
+                    notes: payload.notes ?? "Received on order creation",
+                },
+                user
+            );
+        }
+
+        return refreshShippingStatus(tx, purchaseId);
+    });
+};
+
 const receivePurchaseItem = async (
     purchaseId: string,
     payload: IReceivePurchaseItemPayload,
@@ -129,99 +323,11 @@ const receivePurchaseItem = async (
     }
 
     return prisma.$transaction(async (tx) => {
-        const receiveRow = await tx.purchaseReceive.create({
-            data: {
-                owner_id: user.ownerId,
-                purchase_id: purchaseId,
-                purchase_item_id: item.id,
-                receive_date: new Date(payload.receive_date),
-                receiver_name: payload.receiver_name,
-                received_qty: payload.received_qty,
-                condition: payload.condition,
-                notes: payload.notes ?? "",
-                created_by: user.userId,
-            },
-        });
-
-        await tx.purchaseItem.update({
-            where: { id: item.id },
-            data: { received_qty: item.received_qty + payload.received_qty },
-        });
-
-        const inventory = await tx.inventory.findUnique({
-            where: { owner_id_product_id: { owner_id: user.ownerId, product_id: item.product_id! } },
-        });
-
-        if (inventory) {
-            await tx.inventory.update({
-                where: { id: inventory.id },
-                data: {
-                    available_qty: inventory.available_qty + payload.received_qty,
-                    upcoming_qty: Math.max(0, inventory.upcoming_qty - payload.received_qty),
-                },
-            });
-        } else {
-            await tx.inventory.create({
-                data: {
-                    owner_id: user.ownerId,
-                    product_id: item.product_id!,
-                    available_qty: payload.received_qty,
-                    upcoming_qty: 0,
-                },
-            });
-        }
-
-        await createReceiveStockBatch(
-            tx,
-            {
-                productId: item.product_id!,
-                purchaseItemId: item.id,
-                purchaseReceiveId: receiveRow.id,
-                qty: payload.received_qty,
-                dpPrice: Number(item.actual_dp) || Number(item.dp_price) || 0,
-                mrpPrice: Number(item.product?.selling_price ?? 0),
-                receiveDate: new Date(payload.receive_date),
-            },
-            user
-        );
-
-        await tx.inventoryHistory.create({
-            data: {
-                owner_id: user.ownerId,
-                product_id: item.product_id!,
-                product_name: item.product_name,
-                change_type: "purchase_in",
-                qty_change: payload.received_qty,
-                qty_before: inventory?.available_qty ?? 0,
-                qty_after: (inventory?.available_qty ?? 0) + payload.received_qty,
-                reference_id: purchaseId,
-                reference_type: "purchase",
-                notes: `Received from purchase ${purchase.si_no}`,
-                created_by: user.userId,
-            },
-        });
-
-        // Recalculate purchase shipping status from all items.
-        const allItems = await tx.purchaseItem.findMany({
-            where: { purchase_id: purchaseId },
-            select: { qty: true, received_qty: true },
-        });
-        const allReceived = allItems.every((row) => row.received_qty >= row.qty);
-        const someReceived = allItems.some((row) => row.received_qty > 0);
-
-        return tx.purchase.update({
-            where: { id: purchaseId },
-            data: {
-                shipping_status: allReceived
-                    ? ShippingStatus.received
-                    : someReceived
-                        ? ShippingStatus.partial
-                        : ShippingStatus.pending,
-            },
-            include: purchaseInclude,
-        });
+        await receiveItemInTx(tx, purchase, item, payload, user);
+        return refreshShippingStatus(tx, purchaseId);
     });
 };
+
 
 // Edit a receive's quantity: adjusts the receive row, item received_qty,
 // inventory level, the linked FIFO batch, and the purchase status.
@@ -647,6 +753,7 @@ export const PurchaseService = {
     createPurchase,
     updatePurchase,
     receivePurchaseItem,
+    receiveAllPurchaseItems,
     updateReceive,
     deleteReceive,
     setItemReceivedQty,
