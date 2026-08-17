@@ -4,7 +4,7 @@ import { checkAuth } from "../../middleware/checkAuth.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { SaleController } from "./sale.controller.js";
-import { createSaleDeliveryZodSchema, createSaleZodSchema, updateSaleZodSchema } from "./sale.validation.js";
+import { createSaleDeliveryZodSchema, createSaleZodSchema, patchSaleZodSchema, setManualCostZodSchema, updateSaleZodSchema } from "./sale.validation.js";
 
 const router = Router();
 
@@ -14,9 +14,9 @@ router.get("/", checkAuth(), checkSubscription, SaleController.getAllSales);
 router.post("/", checkAuth(...salesRoles), checkSubscription, validateRequest(createSaleZodSchema), SaleController.createSale);
 router.delete("/deliveries/:deliveryId", checkAuth(...salesRoles), checkSubscription, SaleController.deleteDelivery);
 router.post("/:id/deliveries", checkAuth(...salesRoles), checkSubscription, validateRequest(createSaleDeliveryZodSchema), SaleController.addDelivery);
-router.post("/items/:itemId/manual-cost", checkAuth(...salesRoles), checkSubscription, SaleController.setManualCost);
+router.post("/items/:itemId/manual-cost", checkAuth(...salesRoles), checkSubscription, validateRequest(setManualCostZodSchema), SaleController.setManualCost);
 router.put("/:id", checkAuth(...salesRoles), checkSubscription, validateRequest(updateSaleZodSchema), SaleController.updateSale);
-router.patch("/:id", checkAuth(...salesRoles), checkSubscription, SaleController.patchSale);
+router.patch("/:id", checkAuth(...salesRoles), checkSubscription, validateRequest(patchSaleZodSchema), SaleController.patchSale);
 router.delete("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, SaleController.deleteSale);
 
 export const SaleRoutes = router;

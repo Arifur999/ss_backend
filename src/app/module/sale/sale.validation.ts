@@ -44,6 +44,47 @@ export const createSaleZodSchema = z.object({
 
 export const updateSaleZodSchema = createSaleZodSchema;
 
+/**
+ * The subset of a sale PATCH may touch.
+ *
+ * The route had NO schema at all: patchSale whitelisted field names but never
+ * validated a single value, so a sales_staff user could PATCH another
+ * workspace's customer_id onto a sale and the response - which includes the
+ * joined customer - handed back their name, phone and address. The uuid()
+ * checks here stop a malformed id; the ownership checks in the service stop a
+ * well-formed one belonging to somebody else.
+ *
+ * Every field optional, because a patch may carry any one of them, but at least
+ * one has to be present - an empty patch is a mistake worth reporting rather
+ * than a no-op write.
+ */
+export const patchSaleZodSchema = z.object({
+    customer_id: z.uuid("Customer id must be a valid UUID").nullable().optional(),
+    customer_name: z.string("Customer name must be string").optional(),
+    customer_phone: z.string("Customer phone must be string").optional(),
+    customer_address: z.string("Customer address must be string").optional(),
+    account_id: z.uuid("Account id must be a valid UUID").nullable().optional(),
+    account_name: z.string("Account name must be string").optional(),
+    notes: z.string("Notes must be string").optional(),
+    status: z.enum([SaleStatus.draft, SaleStatus.completed, SaleStatus.cancelled], "Invalid status").optional(),
+    delivery_status: z.string("Delivery status must be string").optional(),
+}).refine((payload) => Object.keys(payload).length > 0, {
+    message: "Nothing to update",
+});
+
+/**
+ * A hand-entered cost for one sale line.
+ *
+ * unit_cost was read straight off the body with Number(), unvalidated, by any
+ * role that can make a sale. A negative value wrote negative COGS into the cost
+ * layers and the line, inflating gross profit on the dashboard and every report
+ * permanently, with no audit trail. A non-numeric one became NaN and reached
+ * Prisma as a validation error masked to a generic 500.
+ */
+export const setManualCostZodSchema = z.object({
+    unit_cost: z.number("Unit cost must be a number").nonnegative("Unit cost cannot be negative"),
+});
+
 export const createSaleDeliveryZodSchema = z.object({
     sale_item_id: z.uuid("Sale item id must be a valid UUID"),
     delivery_date: z.string("Delivery date must be string (YYYY-MM-DD)").min(1, "Delivery date is required"),

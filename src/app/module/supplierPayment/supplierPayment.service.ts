@@ -2,6 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { ICreateSupplierPaymentPayload, IUpdateSupplierPaymentPayload } from "./supplierPayment.validation.js";
@@ -14,6 +15,16 @@ const getAllPayments = async (user: IRequestUser, options: ListOptions = {}) => 
 };
 
 const createPayment = async (payload: ICreateSupplierPaymentPayload, user: IRequestUser) => {
+    // Every id in the payload has to point at a row in this workspace. Nothing
+    // checked that before, and an id is all it takes to link to a record - so
+    // posting another owner's account_id or supplier_id attached their row to
+    // this transaction, and any response that joins it handed their details back.
+    await assertOwnedReferences(payload, user.ownerId, {
+        account_id: "account",
+        supplier_id: "supplier",
+        purchase_id: "purchase",
+    });
+
     return prisma.supplierPayment.create({
         data: {
             ...payload,

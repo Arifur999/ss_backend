@@ -65,6 +65,13 @@ model Attendance {
 
   employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
 
+  // One row per employee per day, enforced by the database.
+  //
+  // The service does findFirst-then-create, which is a read followed by a write:
+  // two requests for the same employee-day both found nothing and both created a
+  // row, and payroll then counted that day twice. MonthlyTarget has had this
+  // constraint from the start; Attendance never did.
+  @@unique([owner_id, employee_id, date])
   @@index([owner_id])
   @@index([employee_id, date])
   @@map("attendance")

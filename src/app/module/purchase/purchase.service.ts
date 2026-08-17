@@ -3,6 +3,7 @@ import { ShippingStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { createReceiveStockBatch } from "../inventory/fifo.helpers.js";
@@ -31,6 +32,23 @@ const getAllPurchases = async (user: IRequestUser, statuses?: string[], options:
 
 const createPurchase = async (payload: ICreatePurchasePayload, user: IRequestUser) => {
     const { items, ...purchaseData } = payload;
+
+    // The supplier and every product referenced have to belong to this workspace.
+    // Nothing checked either before: posting another owner's supplier_id accrued
+    // this purchase against their supplier, and superAdmin's supplier cleanup then
+    // cascaded across workspaces. Products are checked as one count rather than
+    // per item so a bad line fails the whole save before anything is written.
+    await assertOwnedReferences(purchaseData, user.ownerId, { supplier_id: "supplier" });
+
+    const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))] as string[];
+    if (productIds.length > 0) {
+        const owned = await prisma.product.count({
+            where: { id: { in: productIds }, owner_id: user.ownerId },
+        });
+        if (owned !== productIds.length) {
+            throw new AppError(status.NOT_FOUND, "Product not found");
+        }
+    }
 
     const existing = await prisma.purchase.findUnique({
         where: { owner_id_si_no: { owner_id: user.ownerId, si_no: payload.si_no } },

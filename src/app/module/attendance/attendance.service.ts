@@ -34,29 +34,30 @@ const upsertAttendance = async (payload: IUpsertAttendancePayload, user: IReques
 
     const date = new Date(payload.date);
 
-    const existing = await prisma.attendance.findFirst({
-        where: { owner_id: user.ownerId, employee_id: payload.employee_id, date },
-    });
-
-    if (existing) {
-        return prisma.attendance.update({
-            where: { id: existing.id },
-            data: {
-                present: payload.present,
-                start_time: payload.start_time,
-                end_time: payload.end_time,
-                total_hours: payload.total_hours,
-                notes: payload.notes,
+    // A real upsert against the (owner, employee, date) unique key, rather than
+    // findFirst followed by create. The old shape was a read then a write: two
+    // requests for the same employee-day both found nothing and both created a
+    // row, and payroll counted that day twice.
+    return prisma.attendance.upsert({
+        where: {
+            owner_id_employee_id_date: {
+                owner_id: user.ownerId,
+                employee_id: payload.employee_id,
+                date,
             },
-        });
-    }
-
-    return prisma.attendance.create({
-        data: {
+        },
+        create: {
             owner_id: user.ownerId,
             employee_id: payload.employee_id,
             date,
             present: payload.present ?? true,
+            start_time: payload.start_time,
+            end_time: payload.end_time,
+            total_hours: payload.total_hours,
+            notes: payload.notes,
+        },
+        update: {
+            present: payload.present,
             start_time: payload.start_time,
             end_time: payload.end_time,
             total_hours: payload.total_hours,
@@ -75,13 +76,15 @@ const updateAttendance = async (id: string, payload: Record<string, any>, user: 
         throw new AppError(status.NOT_FOUND, "Attendance record not found");
     }
 
-    const allowedFields = ["present", "start_time", "end_time", "total_hours", "notes", "date"];
+    // `date` is deliberately not editable. It used to be, which let a row be
+    // moved onto a day the employee already had - creating the duplicate the new
+    // unique key now rejects outright. Moving an attendance record to another day
+    // is a delete plus a fresh entry, which goes through the upsert above.
+    const allowedFields = ["present", "start_time", "end_time", "total_hours", "notes"];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
-        if (field in payload) {
-            data[field] = field === "date" && payload.date ? new Date(payload.date) : payload[field];
-        }
+        if (field in payload) data[field] = payload[field];
     }
 
     return prisma.attendance.update({

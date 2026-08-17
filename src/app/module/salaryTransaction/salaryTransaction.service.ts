@@ -1,6 +1,7 @@
 import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
+import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { ICreateSalaryTransactionPayload, IUpdateSalaryTransactionPayload } from "./salaryTransaction.validation.js";
@@ -16,6 +17,15 @@ const getAllSalaryTransactions = async (user: IRequestUser, employeeId?: string)
 };
 
 const createSalaryTransaction = async (payload: ICreateSalaryTransactionPayload, user: IRequestUser) => {
+    // Every id in the payload has to point at a row in this workspace. Nothing
+    // checked that before, and an id is all it takes to link to a record - so
+    // posting another owner's account_id or customer_id attached their row to
+    // this transaction, and any response that joins it handed their details back.
+    await assertOwnedReferences(payload, user.ownerId, {
+        account_id: "account",
+        category_id: "expenseCategory",
+    });
+
     const employee = await prisma.employee.findFirst({
         where: { id: payload.employee_id, owner_id: user.ownerId },
     });

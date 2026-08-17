@@ -3,6 +3,7 @@ import { DeliveryStatus, Prisma } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { assertOwnedRecord, assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { consumeFifoForSaleItem, releaseFifoForSaleItem } from "../inventory/fifo.helpers.js";
@@ -241,6 +242,19 @@ const insertSalePayments = async (
 const createSale = async (payload: ICreateSalePayload, user: IRequestUser) => {
     const { items, payments, ...saleData } = payload;
 
+    // The customer, the paying account and every account named on a split payment
+    // row all have to belong to this workspace. Products are already checked in
+    // insertSaleItems; these were not, so a sale could be linked to another
+    // owner's customer and the response - saleInclude joins them - handed back
+    // their name, phone and address.
+    await assertOwnedReferences(saleData, user.ownerId, {
+        customer_id: "customer",
+        account_id: "account",
+    });
+    for (const payment of payments ?? []) {
+        await assertOwnedReferences(payment, user.ownerId, { account_id: "account" });
+    }
+
     return prisma.$transaction(async (tx) => {
         const invoiceNo = await resolveInvoiceNo(tx, user.ownerId, saleData.invoice_no);
 
@@ -278,6 +292,19 @@ const updateSale = async (id: string, payload: ICreateSalePayload, user: IReques
     }
 
     const { items, payments, ...saleData } = payload;
+
+    // The customer, the paying account and every account named on a split payment
+    // row all have to belong to this workspace. Products are already checked in
+    // insertSaleItems; these were not, so a sale could be linked to another
+    // owner's customer and the response - saleInclude joins them - handed back
+    // their name, phone and address.
+    await assertOwnedReferences(saleData, user.ownerId, {
+        customer_id: "customer",
+        account_id: "account",
+    });
+    for (const payment of payments ?? []) {
+        await assertOwnedReferences(payment, user.ownerId, { account_id: "account" });
+    }
 
     return prisma.$transaction(async (tx) => {
         await rollbackSaleItems(tx, existing, existing.sale_items, user);
@@ -436,6 +463,24 @@ const patchSale = async (id: string, payload: Record<string, any>, user: IReques
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
         if (field in payload) data[field] = payload[field];
+    }
+
+    // The whitelist above only ever checked field NAMES. Both ids it lets through
+    // are foreign keys, and nothing confirmed they belonged to this workspace - so
+    // a sales_staff user could PATCH another owner's customer_id onto a sale and
+    // the response (saleInclude joins the customer) handed back their name, phone
+    // and address. Every later read of the sale kept serving it.
+    if (data.customer_id) {
+        await assertOwnedRecord(
+            () => prisma.customer.findFirst({ where: { id: data.customer_id, owner_id: user.ownerId }, select: { id: true } }),
+            "Customer"
+        );
+    }
+    if (data.account_id) {
+        await assertOwnedRecord(
+            () => prisma.account.findFirst({ where: { id: data.account_id, owner_id: user.ownerId }, select: { id: true } }),
+            "Account"
+        );
     }
 
     return prisma.sale.update({

@@ -4,12 +4,7 @@ import { checkAuth } from "../../middleware/checkAuth.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { PurchaseController } from "./purchase.controller.js";
-import {
-    createPurchaseZodSchema,
-    receivePurchaseItemZodSchema,
-    updatePurchaseZodSchema,
-    updateReceiveZodSchema,
-} from "./purchase.validation.js";
+import { createPurchaseZodSchema, receivePurchaseItemZodSchema, setItemReceivedQtyZodSchema, updatePurchaseItemZodSchema, updatePurchaseZodSchema, updateReceiveZodSchema } from "./purchase.validation.js";
 
 const router = Router();
 
@@ -17,8 +12,8 @@ router.get("/", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubsc
 router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(createPurchaseZodSchema), PurchaseController.createPurchase);
 router.patch("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updateReceiveZodSchema), PurchaseController.updateReceive);
 router.delete("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.deleteReceive);
-router.patch("/items/:itemId/received-qty", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.setItemReceivedQty);
-router.patch("/items/:itemId", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.updatePurchaseItem);
+router.patch("/items/:itemId/received-qty", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(setItemReceivedQtyZodSchema), PurchaseController.setItemReceivedQty);
+router.patch("/items/:itemId", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updatePurchaseItemZodSchema), PurchaseController.updatePurchaseItem);
 router.delete("/items/:itemId", checkAuth(Role.owner, Role.manager), checkSubscription, PurchaseController.deletePurchaseItem);
 router.post("/:id/receive", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(receivePurchaseItemZodSchema), PurchaseController.receivePurchaseItem);
 router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updatePurchaseZodSchema), PurchaseController.updatePurchase);

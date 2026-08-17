@@ -55,6 +55,43 @@ export const receivePurchaseItemZodSchema = z.object({
     notes: z.string("Notes must be string").optional(),
 });
 
+/**
+ * Editing one purchase line from the Purchase Ledger.
+ *
+ * The route had no schema and the service whitelisted field NAMES only, so
+ * qty: -5 wrote through. A negative qty then made allReceived (received_qty >= qty)
+ * true and flipped the whole purchase to 'received', while the stock query's
+ * SUM(pi.qty) and GREATEST(0, qty - received) computed off the negative number -
+ * putting the entire product's stock page wrong. Reachable through the data-layer
+ * shim, which maps purchase_items.update to this route.
+ */
+export const updatePurchaseItemZodSchema = z.object({
+    product_code: z.string("Product code must be string").optional(),
+    product_name: z.string("Product name must be string").optional(),
+    dp_price: z.number("DP price must be a number").nonnegative("DP price cannot be negative").optional(),
+    discount_pct: z.number("Discount pct must be a number").min(0).max(100).optional(),
+    actual_dp: z.number("Actual DP must be a number").nonnegative("Actual DP cannot be negative").optional(),
+    qty: z.number("Qty must be a number").int().positive("Qty must be at least 1").optional(),
+    total_amount: z.number("Total amount must be a number").nonnegative("Total amount cannot be negative").optional(),
+    sp_pct: z.number("SP pct must be a number").min(0).max(100).optional(),
+    sp_amount: z.number("SP amount must be a number").nonnegative("SP amount cannot be negative").optional(),
+}).refine((payload) => Object.keys(payload).length > 0, {
+    message: "Nothing to update",
+});
+
+/**
+ * Setting a purchase line's total received quantity directly.
+ *
+ * received_qty came off the body through Number() with no floor, and the service
+ * applies the delta to inventory.available_qty with no clamp - so a negative value
+ * drove the stock level down without a matching batch reduction, leaving the FIFO
+ * layers and the inventory level permanently disagreeing. A non-numeric one became
+ * NaN and reached the database.
+ */
+export const setItemReceivedQtyZodSchema = z.object({
+    received_qty: z.number("Received qty must be a number").int().nonnegative("Received qty cannot be negative"),
+});
+
 export const updateReceiveZodSchema = z.object({
     received_qty: z.number("Received qty must be a number").int().nonnegative(),
 });
@@ -62,3 +99,6 @@ export const updateReceiveZodSchema = z.object({
 export type ICreatePurchasePayload = z.infer<typeof createPurchaseZodSchema>;
 export type IUpdatePurchasePayload = z.infer<typeof updatePurchaseZodSchema>;
 export type IReceivePurchaseItemPayload = z.infer<typeof receivePurchaseItemZodSchema>;
+
+export type IUpdatePurchaseItemPayload = z.infer<typeof updatePurchaseItemZodSchema>;
+export type ISetItemReceivedQtyPayload = z.infer<typeof setItemReceivedQtyZodSchema>;

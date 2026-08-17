@@ -2,6 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { ICreateAccountTransferPayload, IUpdateAccountTransferPayload } from "./accountTransfer.validation.js";
 
@@ -13,6 +14,15 @@ const getAllTransfers = async (user: IRequestUser, options: ListOptions = {}) =>
 };
 
 const createTransfer = async (payload: ICreateAccountTransferPayload, user: IRequestUser) => {
+    // Every id in the payload has to point at a row in this workspace. Nothing
+    // checked that before, and an id is all it takes to link to a record - so
+    // posting another owner's account_id or supplier_id attached their row to
+    // this transaction, and any response that joins it handed their details back.
+    await assertOwnedReferences(payload, user.ownerId, {
+        from_account_id: "account",
+        to_account_id: "account",
+    });
+
     if (payload.from_account_id === payload.to_account_id) {
         throw new AppError(status.BAD_REQUEST, "Cannot transfer to the same account");
     }

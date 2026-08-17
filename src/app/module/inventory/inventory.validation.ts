@@ -10,3 +10,22 @@ export const adjustInventoryZodSchema = z.object({
 });
 
 export type IAdjustInventoryPayload = z.infer<typeof adjustInventoryZodSchema>;
+
+/**
+ * A manual DP override from the Inventory page.
+ *
+ * The route had no schema: product_id was untyped and dp_price came off the body
+ * through Number(), so a negative value landed on inventory.dp_price and then
+ * multiplied into stock_value, giving a negative stock valuation. A wrong-but-
+ * positive value silently rewrote cost_price on historical sale lines (now bounded
+ * to the current month in the service, but still worth validating on the way in).
+ *
+ * null is allowed and meaningful - it clears the override so the product's own
+ * cost price takes over again.
+ */
+export const setDpPriceZodSchema = z.object({
+    product_id: z.uuid("Product id must be a valid UUID"),
+    dp_price: z.number("DP price must be a number").nonnegative("DP price cannot be negative").nullable(),
+});
+
+export type ISetDpPricePayload = z.infer<typeof setDpPriceZodSchema>;
