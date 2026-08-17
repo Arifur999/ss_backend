@@ -402,22 +402,102 @@ const setItemReceivedQty = async (itemId: string, newQty: number, user: IRequest
     });
 };
 
-// Delete a receive record: reverse its quantity effects, then remove the row.
+/**
+ * Delete a receive record: reverse its quantity effects and remove the row, all
+ * in one transaction.
+ *
+ * It used to be two: `updateReceive(receiveId, 0)` in its own transaction,
+ * followed by a separate `delete`. If the delete failed, the stock had already
+ * been backed out but the receive row survived with received_qty 0 - and
+ * re-running was not idempotent, because updateReceive clamps the batch with
+ * Math.max(0, ...). That is the shape of "I clicked delete, it said nothing, and
+ * the stock is now wrong".
+ *
+ * It also refuses when the received goods have already been sold. Reversing a
+ * receive whose FIFO layers are partly consumed cannot be done honestly: the
+ * clamp would silently swallow the difference and leave the batch, the inventory
+ * level and the sale costing disagreeing with each other permanently. Better to
+ * say so and let the operator delete the sale first.
+ */
 const deleteReceive = async (receiveId: string, user: IRequestUser) => {
     const receive = await prisma.purchaseReceive.findFirst({
         where: { id: receiveId, owner_id: user.ownerId },
+        include: { purchase_item: true },
     });
 
     if (!receive) {
         throw new AppError(status.NOT_FOUND, "Receive record not found");
     }
 
-    await updateReceive(receiveId, 0, user);
-    await prisma.purchaseReceive.delete({ where: { id: receiveId } });
+    const delta = -receive.received_qty;
+    const productId = receive.purchase_item.product_id;
 
-    return prisma.purchase.findUniqueOrThrow({
-        where: { id: receive.purchase_id },
-        include: purchaseInclude,
+    return prisma.$transaction(async (tx) => {
+        const batch = await tx.inventoryBatch.findFirst({
+            where: { purchase_receive_id: receiveId, owner_id: user.ownerId },
+        });
+
+        // consumed = how much of this batch has already gone out on sales.
+        const consumed = batch ? batch.received_qty - batch.remaining_qty : 0;
+        if (consumed > 0) {
+            throw new AppError(
+                status.CONFLICT,
+                `Cannot delete this receive: ${consumed} of the ${receive.received_qty} received have already been sold. Delete or edit those sales first.`
+            );
+        }
+
+        await tx.purchaseItem.update({
+            where: { id: receive.purchase_item_id },
+            data: { received_qty: { increment: delta } },
+        });
+
+        if (productId) {
+            await tx.inventory.updateMany({
+                where: { owner_id: user.ownerId, product_id: productId },
+                data: { available_qty: { increment: delta } },
+            });
+
+            // Nothing was consumed, so the batch has no history worth keeping and
+            // deleting it is exact - no clamp, nothing swallowed.
+            if (batch) {
+                await tx.inventoryBatch.delete({ where: { id: batch.id } });
+            }
+
+            await tx.inventoryHistory.create({
+                data: {
+                    owner_id: user.ownerId,
+                    product_id: productId,
+                    product_name: receive.purchase_item.product_name,
+                    change_type: "adjustment",
+                    qty_change: delta,
+                    reference_id: receive.purchase_id,
+                    reference_type: "purchase_receive_delete",
+                    notes: "Receive record deleted",
+                    created_by: user.userId,
+                },
+            });
+        }
+
+        await tx.purchaseReceive.delete({ where: { id: receiveId } });
+
+        const allItems = await tx.purchaseItem.findMany({
+            where: { purchase_id: receive.purchase_id },
+            select: { qty: true, received_qty: true },
+        });
+        const allReceived = allItems.every((row) => row.received_qty >= row.qty);
+        const someReceived = allItems.some((row) => row.received_qty > 0);
+
+        return tx.purchase.update({
+            where: { id: receive.purchase_id },
+            data: {
+                shipping_status: allReceived
+                    ? ShippingStatus.received
+                    : someReceived
+                        ? ShippingStatus.partial
+                        : ShippingStatus.pending,
+            },
+            include: purchaseInclude,
+        });
     });
 };
 
