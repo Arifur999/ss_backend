@@ -26,17 +26,6 @@ COPY --from=build /app/dist ./dist
 # `npx prisma migrate deploy` can run inside this same image on deploy.
 COPY prisma.config.ts ./
 COPY prisma ./prisma
-
-# Drop root. node:22-alpine ships a `node` user; nothing was switching to it, so
-# a remote-code bug in any dependency ran as root inside the container - and
-# compose bind-mounts make that a short hop to files on the host.
-#
-# chown first: `npx prisma migrate deploy` in the CMD below writes into
-# node_modules/.prisma at start-up, which a non-root user cannot do on
-# root-owned files.
-RUN chown -R node:node /app
-USER node
-
 EXPOSE 5000
 # `prisma migrate deploy` runs on every container start, before the server -
 # it's idempotent (a no-op if nothing's pending), and platforms like Railway
