@@ -1,13 +1,13 @@
 import bcrypt from "bcryptjs";
 import status from "http-status";
 import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/enums.js";
-import type { OwnerSubscription, SubscriptionPayment, User } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateAuthCaches, invalidateOwnerAccess } from "../../utils/authCache.js";
-import { escapeHtml, sendTemplatedEmail } from "../../utils/email.js";
+import { sendTemplatedEmail } from "../../utils/email.js";
+import { buildPlanGiftCardHtml, planGiftCardSubject } from "../../utils/giftCard.js";
 import { planSmsCredits } from "../../utils/smsGrants.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
 
@@ -364,65 +364,40 @@ const updatePayment = async (
     // immediately, not once the cached entry ages out.
     invalidateOwnerAccess(payment.owner_id);
 
-    // When this approval just activated a paid plan, email the owner a detailed
-    // invoice for their records. Fire-and-forget - a slow mail provider must
-    // never block the approval response.
+    // When this approval just activated a paid plan, email the owner their
+    // welcome card - the plan, the dates, the receipt and the support line.
+    // Fire-and-forget - a slow mail provider must never block the approval
+    // response, and the support number is read alongside it because a card
+    // without a number to call is the one thing it must not be.
     if (payload.status === "paid" && payment.status !== "paid") {
-        const owner = await prisma.user.findUnique({
-            where: { id: payment.owner_id },
-            include: { subscription: true },
-        });
+        const [owner, settings] = await Promise.all([
+            prisma.user.findUnique({
+                where: { id: payment.owner_id },
+                include: { subscription: true },
+            }),
+            prisma.platformSetting.findFirst().catch(() => null),
+        ]);
         if (owner?.email) {
-            void sendTemplatedEmail(owner.email, `Payment invoice - ${updated.invoice_no}`, buildInvoiceHtml(owner, updated));
+            void sendTemplatedEmail(
+                owner.email,
+                planGiftCardSubject(updated.plan_type),
+                buildPlanGiftCardHtml({
+                    ownerName: owner.full_name || "",
+                    businessName: owner.subscription?.business_name || owner.full_name || "",
+                    planType: updated.plan_type,
+                    amount: Number(updated.amount),
+                    invoiceNo: updated.invoice_no,
+                    trxId: updated.trx_id,
+                    senderNumber: updated.sender_number,
+                    purchaseDate: updated.date,
+                    expiryDate: owner.subscription?.expiry_date,
+                    supportNumber: settings?.support_number,
+                }),
+            );
         }
     }
 
     return updated;
-};
-
-// What the caller above loads: the owner row plus its subscription, which is
-// where the business name and expiry date on the invoice come from.
-type OwnerWithSubscription = User & { subscription: OwnerSubscription | null };
-
-// Renders the plan-purchase invoice email sent to an owner on approval.
-const buildInvoiceHtml = (owner: OwnerWithSubscription, payment: SubscriptionPayment) => {
-    const money = (n: number) => `Tk ${Number(n || 0).toLocaleString("en-US")}`;
-    const day = (d?: Date | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-");
-    const planLabel = payment.plan_type === "yearly" ? "Yearly plan" : "Monthly plan";
-    const business = owner.subscription?.business_name || owner.full_name || "";
-    const expiry = owner.subscription?.expiry_date;
-    // Values are escaped, not the labels: business_name, full_name and trx_id
-    // are all typed by the owner, and they land inside HTML that goes out by
-    // email. The markup around them is ours and stays as-is.
-    const row = (label: string, value: string, bold = false) =>
-        `<tr><td style="padding:8px 0;color:#64748b;">${label}</td><td style="padding:8px 0;text-align:right;${bold ? "font-weight:600;" : ""}">${escapeHtml(value)}</td></tr>`;
-
-    return `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;">
-      <div style="background:#0b0b0f;color:#ffffff;padding:20px 24px;border-radius:12px 12px 0 0;">
-        <h2 style="margin:0;font-size:20px;">Payment Invoice</h2>
-        <p style="margin:4px 0 0;font-size:13px;color:#cbd5e1;">Invoice #${escapeHtml(payment.invoice_no)}</p>
-      </div>
-      <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
-        <p style="margin:0 0 16px;font-size:14px;">Hi ${escapeHtml(owner.full_name) || "there"}, thank you for your payment - your subscription is now active.</p>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;">
-          ${row("Business", business, true)}
-          ${row("Plan", planLabel, true)}
-          ${row("Payment date", day(payment.date))}
-          ${row("Method", "bKash (manual)")}
-          ${row("Transaction ID", payment.trx_id || "-")}
-          ${row("Paid from", payment.sender_number || "-")}
-          ${row("Valid until", day(expiry), true)}
-        </table>
-        <div style="margin-top:16px;padding:16px;background:#f1f5f9;border-radius:10px;">
-          <table style="width:100%;"><tr>
-            <td style="font-weight:700;font-size:15px;">Amount paid</td>
-            <td style="text-align:right;font-weight:800;font-size:22px;">${money(Number(payment.amount))}</td>
-          </tr></table>
-        </div>
-        <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">This is a system-generated invoice for your records.</p>
-      </div>
-    </div>`;
 };
 
 const getActivities = async (limit = 100) => {

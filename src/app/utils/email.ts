@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
+import { PRODUCT_NAME } from "../config/brand.js";
 
 // ---------------------------------------------------------------------------
 // Email sender.
@@ -85,7 +86,7 @@ const sendViaResend = async (to: string, subject: string, html: string): Promise
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            from: `Furniture Business Management <${env.RESEND.FROM_EMAIL}>`,
+            from: `${PRODUCT_NAME} <${env.RESEND.FROM_EMAIL}>`,
             to,
             subject,
             html,
@@ -116,7 +117,7 @@ const deliverEmail = async (to: string, subject: string, html: string): Promise<
     if (isOAuthConfigured() || isSmtpConfigured()) {
         try {
             await getTransporter().sendMail({
-                from: `"Furniture Business Management" <${fromAddress()}>`,
+                from: `"${PRODUCT_NAME}" <${fromAddress()}>`,
                 to,
                 subject,
                 html,
@@ -159,7 +160,7 @@ const otpEmailHtml = (name: string, otp: string) => `
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 480px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; font-family: Arial, Helvetica, sans-serif;">
           <tr>
             <td style="background-color: #1D9E75; padding: 18px 32px;">
-              <span style="font-size: 16px; font-weight: bold; color: #ffffff;">Furniture Business Management</span>
+              <span style="font-size: 16px; font-weight: bold; color: #ffffff;">${PRODUCT_NAME}</span>
             </td>
           </tr>
           <tr>

@@ -15,3 +15,9 @@ export const updatePlatformSettingsZodSchema = z.object({
 });
 
 export type IUpdatePlatformSettingsPayload = z.infer<typeof updatePlatformSettingsZodSchema>;
+
+// Preview of the plan welcome card. `to` is optional - left out, the card goes
+// to the super admin making the request.
+export const sendTestGiftCardZodSchema = z.object({
+    to: z.string("Email must be string").email("Enter a valid email address").optional(),
+});

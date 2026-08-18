@@ -2,6 +2,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SUBJECT } from "../../utils/defaultReminderTemplate.js";
 import { renderTemplate, sendTemplatedEmail } from "../../utils/email.js";
+import { buildPlanGiftCardHtml, planGiftCardSubject } from "../../utils/giftCard.js";
 import { renewUrl } from "../../utils/subscriptionReminders.js";
 import { IUpdatePlatformSettingsPayload } from "./platformSettings.validation.js";
 
@@ -84,10 +85,47 @@ const sendTestReminder = async (admin: IRequestUser) => {
     return { sent, subject, html };
 };
 
+/**
+ * Sends the plan welcome card - the email an owner gets when their payment is
+ * approved - filled with sample figures, so the super admin can see exactly
+ * what a customer receives without approving a real payment first.
+ *
+ * `to` is optional and defaults to the admin's own address; the route is super
+ * admin only, so an arbitrary address here is a deliberate choice by the person
+ * who owns the mail domain, not something a customer can point anywhere.
+ */
+const sendTestGiftCard = async (admin: IRequestUser, to?: string) => {
+    const settings = await getOrCreateSettings();
+    const recipient = String(to || "").trim() || admin.email;
+
+    const purchase = new Date();
+    const expiry = new Date(purchase);
+    expiry.setMonth(expiry.getMonth() + 12);
+
+    const html = buildPlanGiftCardHtml({
+        ownerName: admin.name || "Owner",
+        businessName: "Sample Furniture House",
+        planType: "yearly",
+        amount: Number(settings.yearly_price),
+        invoiceNo: "INV-SAMPLE-0001",
+        trxId: "9J7K2L1M0N",
+        senderNumber: "01XXXXXXXXX",
+        purchaseDate: purchase,
+        expiryDate: expiry,
+        supportNumber: settings.support_number,
+    });
+
+    const subject = planGiftCardSubject("yearly");
+    const sent = await sendTemplatedEmail(recipient, subject, html);
+
+    return { sent, to: recipient, subject };
+};
+
 export const PlatformSettingsService = {
     getPaymentInfo,
     getFullSettings,
     updateSettings,
     resetReminderTemplate,
     sendTestReminder,
+    sendTestGiftCard,
 };

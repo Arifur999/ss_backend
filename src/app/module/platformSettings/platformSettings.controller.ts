@@ -57,10 +57,26 @@ const sendTestReminder = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const sendTestGiftCard = catchAsync(async (req: Request, res: Response) => {
+    const result = await PlatformSettingsService.sendTestGiftCard(
+        req.user as IRequestUser,
+        req.body?.to as string | undefined,
+    );
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: result.sent
+            ? `Welcome card sent to ${result.to}`
+            : "Email not configured - nothing was sent",
+        data: result,
+    });
+});
+
 export const PlatformSettingsController = {
     getPaymentInfo,
     getFullSettings,
     updateSettings,
     resetReminderTemplate,
     sendTestReminder,
+    sendTestGiftCard,
 };
