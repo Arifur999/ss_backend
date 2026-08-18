@@ -32,6 +32,9 @@ const toProfile = (user: any) => ({
     avatar_url: user.avatar_url,
     branch_id: user.branch_id,
     is_active: user.is_active,
+    // The app hides menu entries this user cannot use. Presentation only - every
+    // one of those routes is guarded on the server too.
+    permissions: user.permissions ?? [],
     last_active: user.last_active,
     created_at: user.created_at,
 });
