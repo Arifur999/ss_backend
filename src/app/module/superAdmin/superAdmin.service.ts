@@ -330,26 +330,23 @@ const updatePayment = async (
                 },
             });
 
-            // Bundled SMS credits, granted only on the owner's FIRST approved
-            // payment for this plan - renewals don't top the wallet up again.
+            // Bundled SMS credits, granted on EVERY approved payment - a
+            // monthly plan tops the wallet up 100 each month it is renewed, a
+            // yearly one 500 each year. It used to fire only on the owner's
+            // first payment of a plan, which meant the plan cards promised
+            // free SMS the second month never delivered.
+            //
+            // The guard above (payload.status === "paid" && payment.status !==
+            // "paid") is what stops a re-save of an already-paid payment from
+            // crediting the wallet twice - the grant follows the approval, not
+            // the row.
             const credits = planSmsCredits(nextPayment.plan_type);
             if (credits > 0) {
-                const earlierPaid = await tx.subscriptionPayment.count({
-                    where: {
-                        owner_id: payment.owner_id,
-                        plan_type: nextPayment.plan_type,
-                        status: "paid",
-                        id: { not: nextPayment.id },
-                    },
+                await tx.smsWallet.upsert({
+                    where: { owner_id: payment.owner_id },
+                    create: { owner_id: payment.owner_id, balance: credits },
+                    update: { balance: { increment: credits } },
                 });
-
-                if (earlierPaid === 0) {
-                    await tx.smsWallet.upsert({
-                        where: { owner_id: payment.owner_id },
-                        create: { owner_id: payment.owner_id, balance: credits },
-                        update: { balance: { increment: credits } },
-                    });
-                }
             }
         }
 
