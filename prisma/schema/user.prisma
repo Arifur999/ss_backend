@@ -132,7 +132,7 @@ model PlatformSetting {
   yearly_original_price Decimal @default(7188) @db.Decimal(15, 2)
   // Monthly plan price (no yearly discount). Charged when an owner picks the
   // monthly plan from the Current Plan / choose-plan cards.
-  monthly_price Decimal @default(600) @db.Decimal(15, 2)
+  monthly_price Decimal @default(599) @db.Decimal(15, 2)
 
   // Hotline shown to an owner while their manual payment awaits approval, so
   // they know who to call if activation is taking too long. Editable by the
