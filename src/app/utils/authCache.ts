@@ -67,6 +67,7 @@ export interface CachedAuthUser {
     is_active: boolean;
     email_verified: boolean;
     token_version: number;
+    permissions: string[];
 }
 
 // The subscription facts access is decided from. plan_status is a snapshot;

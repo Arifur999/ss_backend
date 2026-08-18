@@ -46,6 +46,10 @@ const buildTokenPayload = (user: {
 }): IRequestUser => ({
     userId: user.id,
     ownerId: user.role === Role.super_admin ? user.id : (user.owner_id ?? user.id),
+    // Deliberately not in the token. Permissions are read from the database by
+    // checkAuth on every request, so changing them takes effect at once instead
+    // of when the token expires - the same reasoning as token_version.
+    permissions: [],
     role: user.role,
     email: user.email,
     name: user.full_name,

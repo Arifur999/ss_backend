@@ -3,6 +3,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { sanitizePermissions } from "../../shared/permissions.js";
 import { invalidateUser } from "../../utils/authCache.js";
 import { ICreateTeamUserPayload, IUpdateOwnProfilePayload, IUpdateTeamUserPayload } from "./user.validation.js";
 
@@ -16,6 +17,7 @@ const toTeamUser = (user: any) => ({
     phone: user.phone,
     avatar_url: user.avatar_url,
     is_active: user.is_active,
+    permissions: user.permissions ?? [],
     created_at: user.created_at,
 });
 
@@ -50,6 +52,10 @@ const createTeamUser = async (payload: ICreateTeamUserPayload, user: IRequestUse
             phone: payload.phone ?? "",
             avatar_url: payload.avatar_url ?? "",
             owner_id: user.ownerId,
+            // Unknown names are dropped rather than rejected, so a frontend from
+            // a slightly older deploy cannot fail the whole save. An empty list
+            // means "everything the role allows" - see shared/permissions.ts.
+            permissions: sanitizePermissions(payload.permissions),
             // Staff accounts are created by their owner who hands them the
             // password directly - no OTP round-trip needed for them.
             email_verified: true,
@@ -79,6 +85,7 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
     if (payload.phone !== undefined) data.phone = payload.phone;
     if (payload.avatar_url !== undefined) data.avatar_url = payload.avatar_url;
     if (payload.is_active !== undefined) data.is_active = payload.is_active;
+    if (payload.permissions !== undefined) data.permissions = sanitizePermissions(payload.permissions);
     if (payload.password !== undefined) {
         data.password = await bcrypt.hash(payload.password, 10);
         // An owner setting a new password for a staff member is usually doing it
@@ -91,8 +98,9 @@ const updateTeamUser = async (payload: IUpdateTeamUserPayload, user: IRequestUse
         data,
     });
 
-    // Role and is_active are read from the cache on every request, so a
-    // deactivated or demoted user has to stop working now, not in 15s.
+    // Role, is_active and permissions are read from the cache on every request,
+    // so a deactivated, demoted or newly-restricted user has to stop working now,
+    // not in 15s.
     invalidateUser(target.id);
 
     return toTeamUser(updated);

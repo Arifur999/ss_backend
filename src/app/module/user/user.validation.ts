@@ -10,6 +10,9 @@ export const createTeamUserZodSchema = z.object({
     full_name: z.string("Full name must be string").min(1, "Full name is required"),
     role: z.enum(staffRoles, "Role must be one of manager, sales_staff, accountant"),
     phone: z.string("Phone must be string").optional(),
+    // Unknown names are dropped in the service rather than rejected here, so a
+    // frontend from a slightly older deploy cannot fail the whole save.
+    permissions: z.array(z.string("Permission must be string")).optional(),
     avatar_url: z.string("avatar_url must be string").optional(),
 });
 
@@ -21,6 +24,7 @@ export const updateTeamUserZodSchema = z.object({
     is_active: z.boolean("is_active must be a boolean").optional(),
     avatar_url: z.string("avatar_url must be string").optional(),
     password: z.string("Password must be string").min(6, "Password must be at least 6 characters").optional(),
+    permissions: z.array(z.string("Permission must be string")).optional(),
 });
 
 // What a user may change about their own account. Deliberately not role or

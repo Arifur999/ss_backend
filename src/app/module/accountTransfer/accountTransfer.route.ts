@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Role } from "../../../generated/prisma/enums.js";
 import { checkAuth } from "../../middleware/checkAuth.js";
+import { requirePermission } from "../../middleware/requirePermission.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { AccountTransferController } from "./accountTransfer.controller.js";
@@ -9,7 +10,7 @@ import { createAccountTransferZodSchema, updateAccountTransferZodSchema } from "
 const router = Router();
 
 router.get("/", checkAuth(), checkSubscription, AccountTransferController.getAllTransfers);
-router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(createAccountTransferZodSchema), AccountTransferController.createTransfer);
+router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("Account Transfer"), validateRequest(createAccountTransferZodSchema), AccountTransferController.createTransfer);
 router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, validateRequest(updateAccountTransferZodSchema), AccountTransferController.updateTransfer);
 router.delete("/:id", checkAuth(Role.owner), checkSubscription, AccountTransferController.deleteTransfer);
 

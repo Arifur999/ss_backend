@@ -27,6 +27,13 @@ model User {
   // issued before this column existed keep working - nobody is signed out by
   // the upgrade itself.
   token_version Int @default(0)
+  // What this user may do WITHIN their role - see shared/permissions.ts.
+  //
+  // Empty means "everything the role allows", which is what makes this safe to
+  // add to a live system: every existing team member has an empty array on the
+  // morning of the upgrade and nobody loses access. Restrictions only start
+  // applying to a user once somebody ticks boxes for them.
+  permissions String[] @default([])
   // For owners: owner_id = own id. For team members: points to their owner.
   owner_id    String?
   last_active DateTime?

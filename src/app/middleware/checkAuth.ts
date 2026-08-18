@@ -46,6 +46,7 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
                     is_active: true,
                     email_verified: true,
                     token_version: true,
+                    permissions: true,
                 },
             });
             setCachedUser(userId, user);
@@ -85,6 +86,7 @@ export const checkAuth = (...authRoles: Role[]) => async (req: Request, res: Res
             email: user.email,
             name: user.full_name,
             tokenVersion: user.token_version,
+            permissions: user.permissions ?? [],
         };
 
         next();
