@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
 import { PRODUCT_NAME } from "../config/brand.js";
+import { escapeHtml } from "./escapeHtml.js";
 
 // ---------------------------------------------------------------------------
 // Email sender.
@@ -135,17 +136,11 @@ const deliverEmail = async (to: string, subject: string, html: string): Promise<
     return false;
 };
 
-// A user's full_name ends up interpolated straight into HTML below. It's
-// always mailed back to that same user (never to anyone else), so there's no
-// cross-user injection risk - but escaping it is free, so do it anyway.
-export const escapeHtml = (value: string) =>
-    value.replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-    }[char] as string));
+// Re-exported so the call sites that have always imported it from here keep
+// working. It lives in its own module now because importing this file pulls in
+// config/env.ts, which throws when the database URL is unset - and a template
+// builder should not need a database to render a string.
+export { escapeHtml };
 
 // Table-based layout (not divs/flexbox) because Outlook desktop renders mail
 // with Word's engine, which mangles modern CSS but has always understood

@@ -1,5 +1,5 @@
 import { PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_URL, SUPPORT_NUMBER_FALLBACK, telHref } from "../config/brand.js";
-import { escapeHtml } from "./email.js";
+import { escapeHtml } from "./escapeHtml.js";
 
 // ---------------------------------------------------------------------------
 // The email an owner gets when their subscription payment is approved.
