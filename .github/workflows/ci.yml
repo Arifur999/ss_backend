@@ -80,9 +80,14 @@ jobs:
 
       # Rebuilds the backend image and restarts it. The container itself runs
       # `prisma migrate deploy` on start, so schema changes apply here too.
+      # ConnectTimeout so an unreachable VPS fails in twenty seconds rather than
+      # burning the job's whole time budget. Deliberately NOT retried the way the
+      # frontend upload is: this step rebuilds images and recreates containers, so
+      # re-running it blind after an unknown failure could recreate them while the
+      # first attempt is still mid-flight. A red deploy here means read the log.
       - name: Pull and restart the stack
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.VPS_SSH_PORT || 22 }}" \
+          ssh -i ~/.ssh/id_ed25519 -o ConnectTimeout=20 -p "${{ secrets.VPS_SSH_PORT || 22 }}" \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             'set -e
              cd ${{ secrets.VPS_APP_DIR }}/hatim_Backend
