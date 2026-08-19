@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { hasLiveAccess, planSelectionFields } from "./planSelection.js";
 
+// The helper hands back a loose bag of columns; these are the few this file
+// reads out of it.
+type DatedFields = { expiry_date: Date; active_until: Date; plan: string; plan_status: string; trial_used: boolean };
+const dated = (fields: Record<string, unknown>) => fields as unknown as DatedFields;
+
 const NOW = new Date("2026-08-19T05:30:00.000Z");
 const tomorrow = new Date("2026-08-20T05:30:00.000Z");
 const yesterday = new Date("2026-08-18T05:30:00.000Z");
@@ -32,8 +37,8 @@ describe("choosing a plan", () => {
 
     it("dates a monthly selection a month out and a yearly one a year", () => {
         const expired = { plan_status: "expired", expiry_date: yesterday };
-        const monthly = planSelectionFields("monthly", expired, NOW) as any;
-        const yearly = planSelectionFields("yearly", expired, NOW) as any;
+        const monthly = dated(planSelectionFields("monthly", expired, NOW));
+        const yearly = dated(planSelectionFields("yearly", expired, NOW));
         assert.equal(monthly.expiry_date.toISOString(), "2026-09-19T05:30:00.000Z");
         assert.equal(yearly.expiry_date.toISOString(), "2027-08-19T05:30:00.000Z");
         assert.equal(yearly.plan, "Enterprise");
@@ -41,7 +46,7 @@ describe("choosing a plan", () => {
 
     it("starts the free trial immediately, for seven days", () => {
         const fresh = { plan_status: "expired", expiry_date: null, trial_used: false };
-        const fields = planSelectionFields("free_trial", fresh, NOW) as any;
+        const fields = dated(planSelectionFields("free_trial", fresh, NOW));
         assert.equal(fields.plan_status, "active");
         assert.equal(fields.trial_used, true);
         assert.equal(fields.expiry_date.toISOString(), "2026-08-26T05:30:00.000Z");

@@ -10,18 +10,6 @@ import { PlatformSettingsService } from "../platformSettings/platformSettings.se
 import { planSelectionFields } from "./planSelection.js";
 import { IChoosePlanPayload, ISubmitManualPaymentPayload } from "./subscription.validation.js";
 
-const addDays = (date: Date, days: number) => {
-    const next = new Date(date);
-    next.setDate(next.getDate() + days);
-    return next;
-};
-
-const addMonths = (date: Date, months: number) => {
-    const next = new Date(date);
-    next.setMonth(next.getMonth() + months);
-    return next;
-};
-
 // Returns the subscription plus any payment still awaiting super-admin
 // approval. The pending payment is what lets the checkout / plans screens show
 // "waiting for approval" instead of the plan cards after a page reload - the
@@ -67,7 +55,6 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
 
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
-    const isMonthly = payload.plan_type === "monthly";
 
     // The free trial can be started exactly once, and NEVER once the owner is
     // on a paid plan - otherwise clicking "free trial" would wipe out a live
@@ -94,8 +81,6 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
             },
         });
     }
-
-    const expiry = isTrial ? addDays(now, 7) : isMonthly ? addMonths(now, 1) : addMonths(now, 12);
 
     // The rule lives in planSelection.ts, where it can be tested without a
     // database - see planSelection.test.ts for what it is allowed to change.
