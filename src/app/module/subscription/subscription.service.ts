@@ -7,6 +7,7 @@ import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateOwnerAccess } from "../../utils/authCache.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { PlatformSettingsService } from "../platformSettings/platformSettings.service.js";
+import { planSelectionFields } from "./planSelection.js";
 import { IChoosePlanPayload, ISubmitManualPaymentPayload } from "./subscription.validation.js";
 
 const addDays = (date: Date, days: number) => {
@@ -96,22 +97,15 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
 
     const expiry = isTrial ? addDays(now, 7) : isMonthly ? addMonths(now, 1) : addMonths(now, 12);
 
+    // The rule lives in planSelection.ts, where it can be tested without a
+    // database - see planSelection.test.ts for what it is allowed to change.
+    const selectionFields = planSelectionFields(payload.plan_type, existing, now);
+
     const subscription = await prisma.ownerSubscription.update({
         where: { owner_id: user.ownerId },
         data: {
             status: isTrial ? SubscriptionStatus.active : SubscriptionStatus.pending,
-            plan: isTrial ? "Trial" : isMonthly ? "Starter" : "Enterprise",
-            trial_start: now,
-            trial_end: addDays(now, 7),
-            active_until: isTrial ? expiry : null,
-            plan_type: payload.plan_type,
-            // Paid plans stay "expired" (i.e. locked out) until a super admin
-            // approves the submitted payment - see superAdmin.service.ts.
-            plan_status: isTrial ? PlanStatus.active : PlanStatus.expired,
-            start_date: now,
-            expiry_date: expiry,
-            blocked_reason: "",
-            trial_used: isTrial ? true : existing.trial_used,
+            ...selectionFields,
             ...(payload.address?.trim() ? { address: payload.address.trim() } : {}),
         },
     });

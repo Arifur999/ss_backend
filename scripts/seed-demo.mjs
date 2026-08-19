@@ -128,6 +128,18 @@ const between = (min, max) => min + Math.floor(rnd() * (max - min + 1))
 const money = (min, max, step = 50) => Math.round(between(min, max) / step) * step
 const chance = (probability) => rnd() < probability
 
+/**
+ * A stamp that makes this run's product codes, SI numbers and invoice numbers
+ * different from any earlier run's.
+ *
+ * Deleting a product, a purchase or a sale is a soft delete - the row keeps its
+ * `owner_id + code` unique key and only gets a `deleted_at`. So a code used
+ * once is reserved for good, and re-seeding after a --wipe would collide on
+ * every single one. The stamp sidesteps that; everything else about the run is
+ * still deterministic.
+ */
+const STAMP = 100 + (Math.floor(Date.now() / 60000) % 900)
+
 const iso = (date) => date.toISOString().slice(0, 10)
 const addDays = (date, days) => { const next = new Date(date); next.setDate(next.getDate() + days); return next }
 
@@ -332,7 +344,7 @@ async function seed() {
   const productPlans = Array.from({ length: productCount }, (_, i) => {
     const category = CATEGORIES[i % CATEGORIES.length]
     const supplier = suppliers[i % suppliers.length]
-    const code = String(10001 + i)
+    const code = `${STAMP}${String(1001 + i)}`
     const selling = money(category.low, category.high, 500)
     // Bought for 62-74% of the shelf price - a furniture margin that leaves
     // room for the discounts the sales below hand out.
@@ -525,7 +537,7 @@ async function seed() {
     // fully paid, a few not at all.
     const paid = chance(0.2) ? net : chance(0.15) ? 0 : Math.round(net * (0.3 + rnd() * 0.5) / 100) * 100
     return {
-      si_no: `PO-${String(1000 + i)}`,
+      si_no: `PO-${STAMP}-${String(1000 + i)}`,
       supplier_id: supplier.id,
       supplier_name: supplier.name,
       date: iso(addDays(START, Math.floor((i / purchaseCount) * 350) + between(0, 3))),
@@ -615,7 +627,7 @@ async function seed() {
       const paid = chance(0.62) ? net : Math.round(net * (0.2 + rnd() * 0.6) / 100) * 100
       const account = payAccount()
       salePlans.push({
-        invoice_no: `INV-${++invoice}`,
+        invoice_no: `INV-${STAMP}-${++invoice}`,
         date: iso(day),
         customer_id: customer.id,
         customer_name: customer.name,
