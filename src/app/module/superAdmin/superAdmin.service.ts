@@ -436,30 +436,64 @@ const getDashboardStats = async () => {
 
 // Platform-wide report: total marketplace sales + subscription revenue,
 // with a 12-month trend for the Reports page chart.
+/**
+ * The platform's OWN report - this business, not the businesses using it.
+ *
+ * It used to sum the sales table with no owner filter, which made the headline
+ * figure every customer's trading added together: Tk 16.9 crore of other
+ * people's furniture, on a page meant to say how the software is doing. That
+ * number belongs to them, not here.
+ *
+ * What replaced it is the operator's own trade: money that actually reached us,
+ * who is paying, who is trying it, and what is waiting to be approved. Revenue
+ * counts only `paid` rows - a pending payment is not income until it clears,
+ * which is the same rule the Finance page applies.
+ */
 const getPlatformReports = async () => {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
     twelveMonthsAgo.setDate(1);
     twelveMonthsAgo.setHours(0, 0, 0, 0);
+    const now = new Date();
 
-    const [salesTotals, paidPayments, monthlySales, monthlyRevenue] = await Promise.all([
-        prisma.sale.aggregate({
-            where: { deleted_at: null },
-            _sum: { net_amount: true },
-            _count: { _all: true },
-        }),
+    const [
+        subscriptionPaid,
+        smsPaid,
+        pending,
+        byPlan,
+        totalOwners,
+        subscriptions,
+        subscriptionSeries,
+        smsSeries,
+        ownerSeries,
+    ] = await Promise.all([
         prisma.subscriptionPayment.aggregate({
             where: { status: "paid" },
             _sum: { amount: true },
+            _count: { _all: true },
         }),
-        prisma.$queryRaw<{ month: string; total: number }[]>`
-            SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
-                   COALESCE(SUM(net_amount), 0)::float AS total
-            FROM sales
-            WHERE deleted_at IS NULL AND date >= ${twelveMonthsAgo}
-            GROUP BY 1
-            ORDER BY 1
-        `,
+        prisma.smsPurchase.aggregate({
+            where: { status: "paid" },
+            _sum: { amount: true },
+            _count: { _all: true },
+        }),
+        // Money already sent that nobody has approved yet. It is not revenue,
+        // but it is the queue the operator has to work through.
+        prisma.subscriptionPayment.aggregate({
+            where: { status: "pending" },
+            _sum: { amount: true },
+            _count: { _all: true },
+        }),
+        prisma.subscriptionPayment.groupBy({
+            by: ["plan_type"],
+            where: { status: "paid" },
+            _sum: { amount: true },
+            _count: { _all: true },
+        }),
+        prisma.user.count({ where: { role: Role.owner } }),
+        prisma.ownerSubscription.findMany({
+            select: { status: true, plan_type: true, expiry_date: true },
+        }),
         prisma.$queryRaw<{ month: string; total: number }[]>`
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
@@ -468,29 +502,96 @@ const getPlatformReports = async () => {
             GROUP BY 1
             ORDER BY 1
         `,
+        prisma.$queryRaw<{ month: string; total: number }[]>`
+            SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
+                   COALESCE(SUM(amount), 0)::float AS total
+            FROM sms_purchases
+            WHERE status = 'paid' AND date >= ${twelveMonthsAgo}
+            GROUP BY 1
+            ORDER BY 1
+        `,
+        prisma.$queryRaw<{ month: string; total: number }[]>`
+            SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+                   COUNT(*)::float AS total
+            FROM users
+            WHERE role = 'owner' AND created_at >= ${twelveMonthsAgo}
+            GROUP BY 1
+            ORDER BY 1
+        `,
     ]);
 
-    // Build a continuous 12-month series so the chart never has gaps.
-    const salesByMonth = new Map(monthlySales.map((row) => [row.month, Number(row.total)]));
-    const revenueByMonth = new Map(monthlyRevenue.map((row) => [row.month, Number(row.total)]));
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    // Active means the same thing here as on the Active Customers page: the
+    // subscription says active AND the expiry has not passed. A row left at
+    // "active" with a date in the past is expired, whatever it says.
+    const nowMs = now.getTime();
+    let activeSubscriptions = 0;
+    let onTrial = 0;
+    let expired = 0;
+    let monthlyPlans = 0;
+    let yearlyPlans = 0;
 
+    subscriptions.forEach((sub) => {
+        const live =
+            sub.status === SubscriptionStatus.active &&
+            sub.expiry_date != null &&
+            sub.expiry_date.getTime() > nowMs;
+
+        if (!live) {
+            expired += 1;
+            return;
+        }
+        if (sub.plan_type === "free_trial") {
+            onTrial += 1;
+            return;
+        }
+        activeSubscriptions += 1;
+        if (sub.plan_type === "monthly") monthlyPlans += 1;
+        if (sub.plan_type === "yearly") yearlyPlans += 1;
+    });
+
+    const planRow = (plan: string) => byPlan.find((row) => row.plan_type === plan);
+    const subscriptionRevenue = Number(subscriptionPaid._sum.amount ?? 0);
+    const smsRevenue = Number(smsPaid._sum.amount ?? 0);
+
+    const subscriptionByMonth = new Map(subscriptionSeries.map((row) => [row.month, Number(row.total)]));
+    const smsByMonth = new Map(smsSeries.map((row) => [row.month, Number(row.total)]));
+    const ownersByMonth = new Map(ownerSeries.map((row) => [row.month, Number(row.total)]));
+
+    // A continuous 12-month series, empty months included, so a quiet month
+    // reads as zero rather than collapsing the axis onto the busy ones.
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const monthly = [];
     const cursor = new Date(twelveMonthsAgo);
     for (let index = 0; index < 12; index += 1) {
         const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        const subscription = subscriptionByMonth.get(key) ?? 0;
+        const sms = smsByMonth.get(key) ?? 0;
         monthly.push({
             month: monthNames[cursor.getMonth()],
-            sales: salesByMonth.get(key) ?? 0,
-            revenue: revenueByMonth.get(key) ?? 0,
+            subscription,
+            sms,
+            revenue: subscription + sms,
+            new_owners: ownersByMonth.get(key) ?? 0,
         });
         cursor.setMonth(cursor.getMonth() + 1);
     }
 
     return {
-        total_sales: salesTotals._sum.net_amount ?? 0,
-        total_orders: salesTotals._count._all,
-        subscription_revenue: paidPayments._sum.amount ?? 0,
+        subscription_revenue: subscriptionRevenue,
+        sms_revenue: smsRevenue,
+        total_revenue: subscriptionRevenue + smsRevenue,
+        paid_payment_count: subscriptionPaid._count._all,
+        sms_purchase_count: smsPaid._count._all,
+        pending_amount: Number(pending._sum.amount ?? 0),
+        pending_count: pending._count._all,
+        total_owners: totalOwners,
+        active_subscriptions: activeSubscriptions,
+        on_trial: onTrial,
+        expired,
+        monthly_plans: monthlyPlans,
+        yearly_plans: yearlyPlans,
+        monthly_revenue: Number(planRow("monthly")?._sum.amount ?? 0),
+        yearly_revenue: Number(planRow("yearly")?._sum.amount ?? 0),
         monthly,
     };
 };
