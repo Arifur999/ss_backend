@@ -2,6 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { fillMonths, toMonthMap } from "../../shared/revenueSeries.js";
 import {
     ICreatePlatformExpensePayload,
     ICreatePlatformWithdrawalPayload,
@@ -11,7 +12,9 @@ import {
 
 export type DateRange = { from?: string; to?: string };
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// MONTH_NAMES, the month keys and the gap-filling loop all come from
+// shared/revenueSeries now - the super admin Reports page builds the same
+// series and the two had already drifted apart.
 
 // Longest series the chart will draw. "All time" with years of history would
 // otherwise produce a bar chart nobody can read.
@@ -119,29 +122,35 @@ const deleteWithdrawal = async (id: string) => {
 // The months the chart should cover. With no filter that is the last 12
 // months; with one it is the months the filter actually spans, so the chart
 // moves with the cards instead of ignoring them.
+// Month boundaries in UTC, matching the keys Postgres groups the money by.
+// Local boundaries with UTC keys put a payment made near midnight at the turn
+// of a month into the wrong bar, or outside the window entirely.
+const firstOfMonthUtc = (date: Date) =>
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+
 const seriesBounds = (range: DateRange) => {
     const end = range.to ? dayAfter(range.to) : new Date();
-    const endMonth = new Date((end ?? new Date()).getFullYear(), (end ?? new Date()).getMonth(), 1);
+    const endMonth = firstOfMonthUtc(end ?? new Date());
 
     let startMonth: Date;
     if (range.from) {
-        const from = startOfDay(range.from) ?? new Date();
-        startMonth = new Date(from.getFullYear(), from.getMonth(), 1);
+        startMonth = firstOfMonthUtc(startOfDay(range.from) ?? new Date());
     } else {
         startMonth = new Date(endMonth);
-        startMonth.setMonth(startMonth.getMonth() - 11);
+        startMonth.setUTCMonth(startMonth.getUTCMonth() - 11);
     }
 
-    let months = (endMonth.getFullYear() - startMonth.getFullYear()) * 12 + (endMonth.getMonth() - startMonth.getMonth()) + 1;
+    let months = (endMonth.getUTCFullYear() - startMonth.getUTCFullYear()) * 12
+        + (endMonth.getUTCMonth() - startMonth.getUTCMonth()) + 1;
     if (months < 1) months = 1;
     if (months > MAX_SERIES_MONTHS) {
         months = MAX_SERIES_MONTHS;
         startMonth = new Date(endMonth);
-        startMonth.setMonth(startMonth.getMonth() - (MAX_SERIES_MONTHS - 1));
+        startMonth.setUTCMonth(startMonth.getUTCMonth() - (MAX_SERIES_MONTHS - 1));
     }
 
     const exclusiveEnd = new Date(endMonth);
-    exclusiveEnd.setMonth(exclusiveEnd.getMonth() + 1);
+    exclusiveEnd.setUTCMonth(exclusiveEnd.getUTCMonth() + 1);
 
     return { startMonth, exclusiveEnd, months };
 };
@@ -195,40 +204,38 @@ const getSummary = async (range: DateRange) => {
 
     const subscriptionMonthly = planTotal("monthly");
     const subscriptionYearly = planTotal("yearly");
+    // Summed over the rows rather than adding the two plans by name: plan_type
+    // also permits free_trial, and a paid row carrying it belongs in the income
+    // whatever it is called.
+    const subscriptionIncome = byPlan.reduce((sum, row) => sum + toNumber(row._sum.amount), 0);
     const smsIncome = toNumber(sms._sum.amount);
-    const totalIncome = subscriptionMonthly + subscriptionYearly + smsIncome;
+    const totalIncome = subscriptionIncome + smsIncome;
     const totalExpense = toNumber(expenses._sum.amount);
     const totalWithdrawn = toNumber(withdrawals._sum.amount);
     const profit = totalIncome - totalExpense;
 
-    const subscriptionByMonth = new Map(subscriptionSeries.map((row) => [row.month, Number(row.total)]));
-    const smsByMonth = new Map(smsSeries.map((row) => [row.month, Number(row.total)]));
-    const expenseByMonth = new Map(expenseSeries.map((row) => [row.month, Number(row.total)]));
+    const subscriptionByMonth = toMonthMap(subscriptionSeries);
+    const smsByMonth = toMonthMap(smsSeries);
+    const expenseByMonth = toMonthMap(expenseSeries);
 
-    // Every month gets a bar, including the empty ones, so a quiet month reads
-    // as zero rather than silently collapsing the axis.
-    const monthly = [];
-    const cursor = new Date(startMonth);
-    for (let index = 0; index < months; index += 1) {
-        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+    const monthly = fillMonths(startMonth, months, (key, month) => {
         const subscription = subscriptionByMonth.get(key) ?? 0;
         const smsAmount = smsByMonth.get(key) ?? 0;
         const expense = expenseByMonth.get(key) ?? 0;
-        monthly.push({
-            month: MONTH_NAMES[cursor.getMonth()],
+        return {
+            month,
             income: subscription + smsAmount,
             subscription,
             sms: smsAmount,
             expense,
             profit: subscription + smsAmount - expense,
-        });
-        cursor.setMonth(cursor.getMonth() + 1);
-    }
+        };
+    });
 
     return {
         subscription_monthly: subscriptionMonthly,
         subscription_yearly: subscriptionYearly,
-        subscription_income: subscriptionMonthly + subscriptionYearly,
+        subscription_income: subscriptionIncome,
         sms_income: smsIncome,
         total_income: totalIncome,
         total_expense: totalExpense,
