@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fillMonths, MONTH_NAMES, monthKey, monthWindow, toMonthMap } from "./revenueSeries.js";
+import { fillMonths, MAX_SERIES_MONTHS, MONTH_NAMES, monthKey, money2, monthWindow, toMonthMap } from "./revenueSeries.js";
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -96,5 +96,87 @@ describe("toMonthMap", () => {
         const map = toMonthMap([{ month: "2026-08", total: 1234.5 }]);
         assert.equal(map.get("2026-08"), 1234.5);
         assert.equal(map.get("2026-07"), undefined);
+    });
+});
+
+describe("monthWindow with a range", () => {
+    it("keeps a whole-month filter inside that month", () => {
+        // The bug this replaced: the range was parsed in local time and the
+        // month read with UTC getters, so at UTC+6 a "from" of 2026-08-01
+        // became 31 July 18:00 UTC and the window started in July - the chart
+        // drew a July bar carrying revenue the summary cards excluded.
+        const { startMonth, exclusiveEnd, months } = monthWindow({ from: "2026-08-01", to: "2026-08-31" });
+        assert.equal(iso(startMonth), "2026-08-01");
+        assert.equal(iso(exclusiveEnd), "2026-09-01");
+        assert.equal(months, 1);
+    });
+
+    it("covers every month a range touches", () => {
+        const { startMonth, exclusiveEnd, months } = monthWindow({ from: "2026-01-15", to: "2026-06-10" });
+        assert.equal(iso(startMonth), "2026-01-01");
+        assert.equal(iso(exclusiveEnd), "2026-07-01");
+        assert.equal(months, 6);
+    });
+
+    it("does not run past the end month on a range with no start", () => {
+        const { startMonth, exclusiveEnd, months } = monthWindow({ to: "2026-08-31" });
+        assert.equal(iso(exclusiveEnd), "2026-09-01");
+        assert.equal(iso(startMonth), "2025-09-01");
+        assert.equal(months, 12);
+    });
+
+    it("caps a very long range rather than drawing hundreds of bars", () => {
+        const { months, startMonth, exclusiveEnd } = monthWindow({ from: "2019-01-01", to: "2026-08-31" });
+        assert.equal(months, MAX_SERIES_MONTHS);
+        assert.equal(iso(exclusiveEnd), "2026-09-01");
+        // The cap trims the START, so the window still ends where asked.
+        assert.equal(iso(startMonth), "2024-09-01");
+    });
+
+    it("never returns fewer than one month", () => {
+        const { months } = monthWindow({ from: "2026-12-01", to: "2026-01-01" });
+        assert.equal(months, 1);
+    });
+});
+
+describe("fillMonths labels", () => {
+    it("names the year once a window can repeat a month", () => {
+        // A 24-month window labelled with bare names puts two ticks called
+        // "Jan" on one axis with no way to tell which year either is.
+        const { startMonth, months } = monthWindow({ from: "2025-01-01", to: "2026-06-30" });
+        const labels = fillMonths(startMonth, months, (_key, label) => label);
+        assert.equal(labels.length, 18);
+        assert.equal(new Set(labels).size, 18, "every label is distinct");
+        assert.equal(labels[0], "Jan 25");
+        assert.equal(labels[17], "Jun 26");
+    });
+
+    it("leaves the year off a window that cannot repeat one", () => {
+        const { startMonth, months } = monthWindow(12, new Date("2026-08-20T10:00:00Z"));
+        const labels = fillMonths(startMonth, months, (_key, label) => label);
+        assert.equal(labels[0], "Sep");
+        assert.equal(labels[11], "Aug");
+    });
+});
+
+describe("money2", () => {
+    it("leaves no residue when one sum is taken off another", () => {
+        // Decimal(15,2) through Number() is a float: 300.30 - 100.10 - 200.20
+        // is 2.8e-14, and a caller testing "is there a remainder" against zero
+        // finds one on every install and draws a row reading Tk 0.
+        assert.equal(money2(300.30 - 100.10 - 200.20), 0);
+        assert.equal(money2((12345.67 + 8901.23) - 12345.67 - 8901.23), 0);
+        assert.notEqual(300.30 - 100.10 - 200.20, 0);
+    });
+
+    it("keeps the paisa", () => {
+        assert.equal(money2(599.994), 599.99);
+        assert.equal(money2(599.995), 600);
+        assert.equal(money2(-0.004), -0);
+    });
+
+    it("reads anything that is not a number as nil", () => {
+        assert.equal(money2(NaN), 0);
+        assert.equal(money2(undefined as unknown as number), 0);
     });
 });

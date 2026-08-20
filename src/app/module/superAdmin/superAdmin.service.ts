@@ -9,7 +9,7 @@ import { invalidateAuthCaches, invalidateOwnerAccess } from "../../utils/authCac
 import { sendTemplatedEmail } from "../../utils/email.js";
 import { buildPlanGiftCardHtml, planGiftCardSubject } from "../../utils/giftCard.js";
 import { planSmsCredits } from "../../utils/smsGrants.js";
-import { fillMonths, monthWindow, PAID_SUBSCRIPTION_WHERE, toMonthMap } from "../../shared/revenueSeries.js";
+import { fillMonths, money2, monthWindow, PAID_STATUS, PAID_SUBSCRIPTION_WHERE, toMonthMap } from "../../shared/revenueSeries.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
 
 // Owner list with profile + subscription, shaped like the old superAdminLive loader.
@@ -447,8 +447,8 @@ const getDashboardStats = async () => {
  *
  * Revenue counts only approved payments - money sent but not yet approved is a
  * queue to work through, not income - and the window, the month keys and what
- * counts as subscription income all come from shared/revenueSeries, so the
- * Finance page cannot answer differently.
+ * counts as approved all come from shared/revenueSeries, so the Finance page
+ * cannot answer differently.
  *
  * Known limit: both payment tables cascade-delete with their owner, so removing
  * a customer takes their payment history out of these totals with them. Keeping
@@ -459,16 +459,22 @@ const getPlatformReports = async () => {
     const { startMonth, exclusiveEnd, months } = monthWindow(12);
     const now = new Date();
 
-    // Live = the subscription says active AND the expiry has not passed. A row
-    // left at "active" with a date in the past is expired whatever it says.
+    // Live means the owner can actually use the product right now, which is
+    // decided by plan_status - the same test hasActiveOwnerAccess applies on
+    // every request. `status` is the wrong column for it: SuperAdminOwners lets
+    // a super admin save an owner as "trial" or "pending" while plan_status
+    // stays active with a future expiry, and that owner is working in the app
+    // while a status test drops them out of every live bucket and reports them
+    // as churned.
     const live = {
-        status: SubscriptionStatus.active,
+        plan_status: PlanStatus.active,
         expiry_date: { gt: now },
     };
     // Has ever paid us. The Active and Churned customer pages require this
     // before an owner counts as a customer at all, so these counters use it
     // too - otherwise Reports and those pages describe different people.
-    const hasPaid = { subscription_payments: { some: { status: "paid" as const } } };
+    const hasPaid = { subscription_payments: { some: { status: PAID_STATUS } } } as const;
+    const owner = { role: Role.owner };
 
     const [
         subscriptionPaid,
@@ -481,6 +487,7 @@ const getPlatformReports = async () => {
         onTrial,
         grantedAccess,
         churned,
+        neverStarted,
         subscriptionSeries,
         smsSeries,
         ownerSeries,
@@ -490,7 +497,7 @@ const getPlatformReports = async () => {
             _sum: { amount: true },
         }),
         prisma.smsPurchase.aggregate({
-            where: { status: "paid" },
+            where: PAID_SUBSCRIPTION_WHERE,
             _sum: { amount: true },
             _count: { _all: true },
         }),
@@ -514,43 +521,60 @@ const getPlatformReports = async () => {
             where: PAID_SUBSCRIPTION_WHERE,
             _sum: { amount: true },
         }),
-        prisma.user.count({ where: { role: Role.owner } }),
-        // Counted in the database rather than by loading every subscription and
-        // bucketing it in Node. These are five integers; there is no reason to
-        // pull a row per customer over the wire to reach them.
+        prisma.user.count({ where: owner }),
+
+        // Five buckets that partition the owners exactly: live or not, crossed
+        // with paid or not, and the live-unpaid half split by whether a trial
+        // is what they are on. Counted in the database rather than by loading a
+        // row per customer into Node to bucket in a loop.
+        //
+        // `is` / `isNot` rather than a bare NOT, because subscription is a
+        // nullable to-one: an owner with no subscription row at all has to fall
+        // on the "not live" side rather than out of the count entirely.
+
+        // Paying: live and has paid. No plan_type test - grantTrialExtension
+        // rewrites plan_type to free_trial even for an owner who has paid, so
+        // testing it dropped paying customers out of this count and out of the
+        // conversion rate, while the Active Customers page still listed them.
+        prisma.user.count({ where: { ...owner, ...hasPaid, subscription: { is: live } } }),
+
+        // On trial: live, never paid, and on the trial plan.
         prisma.user.count({
             where: {
-                role: Role.owner,
-                ...hasPaid,
-                subscription: { ...live, plan_type: { not: "free_trial" } },
-            },
-        }),
-        prisma.user.count({
-            where: { role: Role.owner, subscription: { ...live, plan_type: "free_trial" } },
-        }),
-        // Live, but never paid and not on a trial: a super admin set the plan by
-        // hand. Real access, no money, and it belongs in neither bucket above.
-        prisma.user.count({
-            where: {
-                role: Role.owner,
-                subscription: { ...live, plan_type: { not: "free_trial" } },
+                ...owner,
                 NOT: hasPaid,
+                subscription: { is: { ...live, plan_type: "free_trial" } },
             },
         }),
+
+        // Live, never paid, not on a trial: a super admin set the plan by hand.
+        // Real access, no money.
+        prisma.user.count({
+            where: {
+                ...owner,
+                NOT: hasPaid,
+                subscription: { is: { ...live, plan_type: { not: "free_trial" } } },
+            },
+        }),
+
         // Churn is someone who paid and stopped - what the Churned Customers
         // page lists. It is NOT "every subscription that is not live":
         // registration creates a subscription already marked expired, and
         // submitting a payment marks it pending, so counting those as churn
         // reported ten brand-new signups as ten lost customers, and put an
         // owner waiting for approval in Expired and Awaiting approval at once.
-        prisma.user.count({
-            where: { role: Role.owner, ...hasPaid, NOT: { subscription: live } },
-        }),
+        prisma.user.count({ where: { ...owner, ...hasPaid, subscription: { isNot: live } } }),
+
+        // Signed up and never started: no payment, no live access. Counted, not
+        // left as a remainder - a remainder clamped at zero swallows any
+        // overlap between the buckets above instead of showing it.
+        prisma.user.count({ where: { ...owner, NOT: hasPaid, subscription: { isNot: live } } }),
+
         prisma.$queryRaw<{ month: string; total: number }[]>`
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM subscription_payments
-            WHERE status = 'paid' AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -558,7 +582,7 @@ const getPlatformReports = async () => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM sms_purchases
-            WHERE status = 'paid' AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -573,28 +597,28 @@ const getPlatformReports = async () => {
     ]);
 
     const planTotal = (plan: string) =>
-        Number(byPlan.find((row) => row.plan_type === plan)?._sum.amount ?? 0);
+        money2(Number(byPlan.find((row) => row.plan_type === plan)?._sum.amount ?? 0));
 
     // Every approved payment, not monthly + yearly. plan_type also permits
     // free_trial, so adding the two named plans could leave money out of the
     // headline that the breakdown beside it then could not account for.
-    const subscriptionRevenue = Number(subscriptionPaid._sum.amount ?? 0);
+    const subscriptionRevenue = money2(Number(subscriptionPaid._sum.amount ?? 0));
     const monthlyRevenue = planTotal("monthly");
     const yearlyRevenue = planTotal("yearly");
-    const smsRevenue = Number(smsPaid._sum.amount ?? 0);
+    const smsRevenue = money2(Number(smsPaid._sum.amount ?? 0));
 
     const subscriptionByMonth = toMonthMap(subscriptionSeries);
     const smsByMonth = toMonthMap(smsSeries);
     const ownersByMonth = toMonthMap(ownerSeries);
 
     const monthly = fillMonths(startMonth, months, (key, month) => {
-        const subscription = subscriptionByMonth.get(key) ?? 0;
-        const sms = smsByMonth.get(key) ?? 0;
+        const subscription = money2(subscriptionByMonth.get(key) ?? 0);
+        const sms = money2(smsByMonth.get(key) ?? 0);
         return {
             month,
             subscription,
             sms,
-            revenue: subscription + sms,
+            revenue: money2(subscription + sms),
             new_owners: ownersByMonth.get(key) ?? 0,
         };
     });
@@ -602,23 +626,28 @@ const getPlatformReports = async () => {
     return {
         subscription_revenue: subscriptionRevenue,
         sms_revenue: smsRevenue,
-        total_revenue: subscriptionRevenue + smsRevenue,
+        total_revenue: money2(subscriptionRevenue + smsRevenue),
         monthly_revenue: monthlyRevenue,
         yearly_revenue: yearlyRevenue,
         // Whatever the two named plans do not account for, so the breakdown
-        // always adds up to the headline above it.
-        other_plan_revenue: subscriptionRevenue - monthlyRevenue - yearlyRevenue,
+        // always adds up to the headline above it. Rounded to the paisa: a raw
+        // float subtraction of three Decimal sums leaves a residue like 2.8e-14
+        // on an install that has never taken anything but monthly and yearly,
+        // and a caller testing it against zero then draws a row reading ৳0.
+        other_plan_revenue: money2(subscriptionRevenue - monthlyRevenue - yearlyRevenue),
         sms_purchase_count: smsPaid._count._all,
-        pending_amount: Number(pendingSubscriptions._sum.amount ?? 0) + Number(pendingSms._sum.amount ?? 0),
+        pending_amount: money2(Number(pendingSubscriptions._sum.amount ?? 0) + Number(pendingSms._sum.amount ?? 0)),
         pending_count: pendingSubscriptions._count._all + pendingSms._count._all,
         total_owners: totalOwners,
         active_subscriptions: paying,
         on_trial: onTrial,
         granted_access: grantedAccess,
         churned,
-        // Signed up and never started: no payment, no trial running. These are
-        // the ones that used to be reported as churn.
-        never_started: Math.max(0, totalOwners - paying - onTrial - grantedAccess - churned),
+        never_started: neverStarted,
+        // The five buckets are meant to be every owner exactly once. If they
+        // ever are not, the page says so instead of a clamped remainder hiding
+        // it while the panel presents the rows as a complete split.
+        unaccounted: totalOwners - paying - onTrial - grantedAccess - churned - neverStarted,
         monthly,
     };
 };
@@ -646,8 +675,13 @@ const getPaidCustomers = async () => {
         const lastPaid = paid[0] ?? null;
         const expiry = sub?.expiry_date ?? null;
         const daysLeft = expiry ? Math.ceil((expiry.getTime() - now) / 86400000) : null;
+        // plan_status, not status: it is what hasActiveOwnerAccess checks on
+        // every request, so it is what decides whether this owner can use the
+        // product. A super admin can save an owner as "trial" or "pending"
+        // while plan_status stays active - reading status put a working
+        // customer on the Churned list. The Reports page counts the same way.
         const isActive = Boolean(
-            sub && sub.status === SubscriptionStatus.active && expiry && expiry.getTime() > now
+            sub && sub.plan_status === PlanStatus.active && expiry && expiry.getTime() > now
         );
         return {
             id: owner.id,

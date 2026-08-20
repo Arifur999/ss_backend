@@ -2,7 +2,7 @@ import status from "http-status";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
-import { fillMonths, toMonthMap } from "../../shared/revenueSeries.js";
+import { dayAfterUtc, fillMonths, money2, monthWindow, PAID_STATUS, PAID_SUBSCRIPTION_WHERE, startOfDayUtc, toMonthMap } from "../../shared/revenueSeries.js";
 import {
     ICreatePlatformExpensePayload,
     ICreatePlatformWithdrawalPayload,
@@ -16,23 +16,12 @@ export type DateRange = { from?: string; to?: string };
 // shared/revenueSeries now - the super admin Reports page builds the same
 // series and the two had already drifted apart.
 
-// Longest series the chart will draw. "All time" with years of history would
-// otherwise produce a bar chart nobody can read.
-const MAX_SERIES_MONTHS = 24;
-
-const startOfDay = (value: string) => {
-    const date = new Date(`${value}T00:00:00`);
-    return Number.isNaN(date.getTime()) ? undefined : date;
-};
-
-// Exclusive upper bound: the day after `to`, so a whole end day is included
-// whether the column is a DATE or a TIMESTAMP.
-const dayAfter = (value: string) => {
-    const date = startOfDay(value);
-    if (!date) return undefined;
-    date.setDate(date.getDate() + 1);
-    return date;
-};
+// The range parsers come from shared/revenueSeries and parse in UTC. They
+// used to parse locally here while the month boundaries were read with UTC
+// getters: at UTC+6 a "from" of 2026-08-01 became 31 July 18:00 UTC, so the
+// chart drew a July bar carrying revenue the cards above it did not count.
+const startOfDay = startOfDayUtc;
+const dayAfter = dayAfterUtc;
 
 const whereForRange = (range: DateRange) => {
     const gte = range.from ? startOfDay(range.from) : undefined;
@@ -122,38 +111,7 @@ const deleteWithdrawal = async (id: string) => {
 // The months the chart should cover. With no filter that is the last 12
 // months; with one it is the months the filter actually spans, so the chart
 // moves with the cards instead of ignoring them.
-// Month boundaries in UTC, matching the keys Postgres groups the money by.
-// Local boundaries with UTC keys put a payment made near midnight at the turn
-// of a month into the wrong bar, or outside the window entirely.
-const firstOfMonthUtc = (date: Date) =>
-    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-
-const seriesBounds = (range: DateRange) => {
-    const end = range.to ? dayAfter(range.to) : new Date();
-    const endMonth = firstOfMonthUtc(end ?? new Date());
-
-    let startMonth: Date;
-    if (range.from) {
-        startMonth = firstOfMonthUtc(startOfDay(range.from) ?? new Date());
-    } else {
-        startMonth = new Date(endMonth);
-        startMonth.setUTCMonth(startMonth.getUTCMonth() - 11);
-    }
-
-    let months = (endMonth.getUTCFullYear() - startMonth.getUTCFullYear()) * 12
-        + (endMonth.getUTCMonth() - startMonth.getUTCMonth()) + 1;
-    if (months < 1) months = 1;
-    if (months > MAX_SERIES_MONTHS) {
-        months = MAX_SERIES_MONTHS;
-        startMonth = new Date(endMonth);
-        startMonth.setUTCMonth(startMonth.getUTCMonth() - (MAX_SERIES_MONTHS - 1));
-    }
-
-    const exclusiveEnd = new Date(endMonth);
-    exclusiveEnd.setUTCMonth(exclusiveEnd.getUTCMonth() + 1);
-
-    return { startMonth, exclusiveEnd, months };
-};
+const seriesBounds = (range: DateRange) => monthWindow({ from: range.from, to: range.to });
 
 const getSummary = async (range: DateRange) => {
     const where = whereForRange(range);
@@ -164,11 +122,11 @@ const getSummary = async (range: DateRange) => {
         // not revenue until it clears.
         prisma.subscriptionPayment.groupBy({
             by: ["plan_type"],
-            where: { status: "paid", ...where },
+            where: { ...PAID_SUBSCRIPTION_WHERE, ...where },
             _sum: { amount: true },
         }),
         prisma.smsPurchase.aggregate({
-            where: { status: "paid", ...where },
+            where: { ...PAID_SUBSCRIPTION_WHERE, ...where },
             _sum: { amount: true },
         }),
         prisma.platformExpense.aggregate({ where, _sum: { amount: true }, _count: { _all: true } }),
@@ -177,7 +135,7 @@ const getSummary = async (range: DateRange) => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM subscription_payments
-            WHERE status = 'paid' AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -185,7 +143,7 @@ const getSummary = async (range: DateRange) => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM sms_purchases
-            WHERE status = 'paid' AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -207,9 +165,13 @@ const getSummary = async (range: DateRange) => {
     // Summed over the rows rather than adding the two plans by name: plan_type
     // also permits free_trial, and a paid row carrying it belongs in the income
     // whatever it is called.
-    const subscriptionIncome = byPlan.reduce((sum, row) => sum + toNumber(row._sum.amount), 0);
+    const subscriptionIncome = money2(byPlan.reduce((sum, row) => sum + toNumber(row._sum.amount), 0));
+    // What the two named plans do not account for. The card shows the total
+    // with "Monthly X - Yearly Y" beneath it, and without this that subtitle
+    // stops adding up the moment a paid row carries any other plan_type.
+    const subscriptionOther = money2(subscriptionIncome - subscriptionMonthly - subscriptionYearly);
     const smsIncome = toNumber(sms._sum.amount);
-    const totalIncome = subscriptionIncome + smsIncome;
+    const totalIncome = money2(subscriptionIncome + smsIncome);
     const totalExpense = toNumber(expenses._sum.amount);
     const totalWithdrawn = toNumber(withdrawals._sum.amount);
     const profit = totalIncome - totalExpense;
@@ -236,6 +198,7 @@ const getSummary = async (range: DateRange) => {
         subscription_monthly: subscriptionMonthly,
         subscription_yearly: subscriptionYearly,
         subscription_income: subscriptionIncome,
+        subscription_other: subscriptionOther,
         sms_income: smsIncome,
         total_income: totalIncome,
         total_expense: totalExpense,
