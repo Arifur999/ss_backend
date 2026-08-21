@@ -108,14 +108,23 @@ const deleteWithdrawal = async (id: string) => {
 
 // ----------------------------------------------------------------- summary
 
-// The months the chart should cover. With no filter that is the last 12
-// months; with one it is the months the filter actually spans, so the chart
-// moves with the cards instead of ignoring them.
+// The months the chart should cover: with no filter, the last 12; with one,
+// the months the filter spans.
+//
+// The chart is bounded by the SAME dates as the cards, not by whole months.
+// Filtering 10-20 August used to total eleven days on the cards and draw the
+// whole of August underneath them - one page, two answers. The window still
+// decides which month labels appear; the money inside them is the money the
+// operator asked for.
 const seriesBounds = (range: DateRange) => monthWindow({ from: range.from, to: range.to });
 
 const getSummary = async (range: DateRange) => {
     const where = whereForRange(range);
     const { startMonth, exclusiveEnd, months } = seriesBounds(range);
+    // The exact bounds the cards use, falling back to the month window when the
+    // filter is open-ended, so both halves of the page read the same rows.
+    const seriesFrom = range.from ? startOfDayUtc(range.from) ?? startMonth : startMonth;
+    const seriesTo = range.to ? dayAfterUtc(range.to) ?? exclusiveEnd : exclusiveEnd;
 
     const [byPlan, sms, expenses, withdrawals, subscriptionSeries, smsSeries, expenseSeries] = await Promise.all([
         // Only money actually received counts as income - a pending payment is
@@ -135,7 +144,7 @@ const getSummary = async (range: DateRange) => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM subscription_payments
-            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${seriesFrom} AND date < ${seriesTo}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -143,7 +152,7 @@ const getSummary = async (range: DateRange) => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM sms_purchases
-            WHERE status = ${PAID_STATUS} AND date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE status = ${PAID_STATUS} AND date >= ${seriesFrom} AND date < ${seriesTo}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -151,7 +160,7 @@ const getSummary = async (range: DateRange) => {
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
                    COALESCE(SUM(amount), 0)::float AS total
             FROM platform_expenses
-            WHERE date >= ${startMonth} AND date < ${exclusiveEnd}
+            WHERE date >= ${seriesFrom} AND date < ${seriesTo}
             GROUP BY 1
             ORDER BY 1
         `,
@@ -170,27 +179,33 @@ const getSummary = async (range: DateRange) => {
     // with "Monthly X - Yearly Y" beneath it, and without this that subtitle
     // stops adding up the moment a paid row carries any other plan_type.
     const subscriptionOther = money2(subscriptionIncome - subscriptionMonthly - subscriptionYearly);
-    const smsIncome = toNumber(sms._sum.amount);
+    // Every figure to the paisa. The page decides a card's colour with
+    // `profit < 0` and `available < 0`, and a float subtraction of two Decimal
+    // sums leaves a residue of about 1e-17 - so an operator who is exactly
+    // square was shown a red card reading Tk 0 and told they were overdrawn.
+    const smsIncome = money2(toNumber(sms._sum.amount));
     const totalIncome = money2(subscriptionIncome + smsIncome);
-    const totalExpense = toNumber(expenses._sum.amount);
-    const totalWithdrawn = toNumber(withdrawals._sum.amount);
-    const profit = totalIncome - totalExpense;
+    const totalExpense = money2(toNumber(expenses._sum.amount));
+    const totalWithdrawn = money2(toNumber(withdrawals._sum.amount));
+    const profit = money2(totalIncome - totalExpense);
 
     const subscriptionByMonth = toMonthMap(subscriptionSeries);
     const smsByMonth = toMonthMap(smsSeries);
     const expenseByMonth = toMonthMap(expenseSeries);
 
     const monthly = fillMonths(startMonth, months, (key, month) => {
-        const subscription = subscriptionByMonth.get(key) ?? 0;
-        const smsAmount = smsByMonth.get(key) ?? 0;
-        const expense = expenseByMonth.get(key) ?? 0;
+        const subscription = money2(subscriptionByMonth.get(key) ?? 0);
+        const smsAmount = money2(smsByMonth.get(key) ?? 0);
+        const expense = money2(expenseByMonth.get(key) ?? 0);
         return {
             month,
-            income: subscription + smsAmount,
+            income: money2(subscription + smsAmount),
             subscription,
             sms: smsAmount,
             expense,
-            profit: subscription + smsAmount - expense,
+            // Rounded like the rest: the chart plots this, and a break-even
+            // month left at -5.5e-17 draws as a bar below the axis.
+            profit: money2(subscription + smsAmount - expense),
         };
     });
 
@@ -208,7 +223,7 @@ const getSummary = async (range: DateRange) => {
         withdrawal_count: withdrawals._count._all,
         // What is left after paying the bills and taking money out - the number
         // that answers "how much can I still take".
-        available: profit - totalWithdrawn,
+        available: money2(profit - totalWithdrawn),
         monthly,
     };
 };

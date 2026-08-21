@@ -30,7 +30,9 @@ model SmsWallet {
 // A manual bKash purchase of a credit pack. On approval the wallet is topped up.
 model SmsPurchase {
   id            String   @id @default(uuid())
-  owner_id      String
+  // Nullable for the same reason as subscription_payments: the money stays
+  // on the books after the customer is gone.
+  owner_id      String?
   package_id    String?
   package_name  String   @default("")
   sms_count     Int
@@ -44,7 +46,7 @@ model SmsPurchase {
   date          DateTime @default(now())
   created_at    DateTime @default(now())
 
-  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner User? @relation(fields: [owner_id], references: [id], onDelete: SetNull)
 
   @@index([owner_id])
   @@map("sms_purchases")

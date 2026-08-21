@@ -275,7 +275,12 @@ const updatePurchaseStatus = async (
     const purchase = await prisma.smsPurchase.findUnique({ where: { id } });
     if (!purchase) throw new AppError(status.NOT_FOUND, "SMS purchase not found");
 
-    const justApproved = payload.status === "paid" && purchase.status !== "paid";
+    // The purchase outlives its owner: owner_id is SET NULL when a customer is
+    // deleted, so the money stays on the platform's books. There is then no
+    // wallet to credit and nobody to email, so an orphaned purchase can be
+    // marked but never approved into an effect.
+    const ownerId = purchase.owner_id;
+    const justApproved = payload.status === "paid" && purchase.status !== "paid" && Boolean(ownerId);
 
     const updated = await prisma.$transaction(async (tx) => {
         const next = await tx.smsPurchase.update({
@@ -286,8 +291,8 @@ const updatePurchaseStatus = async (
         // Approving a payment tops up the owner's wallet with the pack credits.
         if (justApproved) {
             await tx.smsWallet.upsert({
-                where: { owner_id: purchase.owner_id },
-                create: { owner_id: purchase.owner_id, balance: purchase.sms_count },
+                where: { owner_id: ownerId as string },
+                create: { owner_id: ownerId as string, balance: purchase.sms_count },
                 update: { balance: { increment: purchase.sms_count } },
             });
         }
@@ -296,14 +301,14 @@ const updatePurchaseStatus = async (
     });
 
     await logAdminActivity({
-        ownerId: purchase.owner_id,
+        ownerId: ownerId ?? "",
         actorEmail: admin.email,
         action: "sms_purchase_updated",
         detail: `SMS purchase ${purchase.invoice_no} marked as ${payload.status}${justApproved ? ` (+${purchase.sms_count} credits)` : ""}`,
     });
 
     if (justApproved) {
-        const owner = await prisma.user.findUnique({ where: { id: purchase.owner_id } });
+        const owner = await prisma.user.findUnique({ where: { id: ownerId as string } });
         if (owner?.email) {
             void sendTemplatedEmail(
                 owner.email,

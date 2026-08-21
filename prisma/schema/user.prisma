@@ -98,7 +98,10 @@ model OwnerSubscription {
 // approving.
 model SubscriptionPayment {
   id            String           @id @default(uuid())
-  owner_id      String
+  // Nullable so the payment outlives the customer: a business's books are
+  // not a child record of whoever paid into them. See the
+  // 20260821120000_keep_payment_history migration.
+  owner_id      String?
   invoice_no    String           @default("")
   plan_type     PlanType         @default(monthly)
   method        String           @default("")
@@ -110,7 +113,7 @@ model SubscriptionPayment {
   notes         String           @default("")
   created_at    DateTime         @default(now())
 
-  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner User? @relation(fields: [owner_id], references: [id], onDelete: SetNull)
 
   @@index([owner_id])
   @@map("subscription_payments")

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import status from "http-status";
-import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/enums.js";
+import { PlanStatus, Role, SubPaymentStatus, SubscriptionStatus } from "../../../generated/prisma/enums.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
@@ -292,6 +292,13 @@ const updatePayment = async (
         throw new AppError(status.NOT_FOUND, "Payment not found");
     }
 
+    // The payment outlives its owner: owner_id is SET NULL when a customer is
+    // deleted so the money stays on the platform's books. There is then no
+    // subscription to activate, no wallet to credit and nobody to send a card
+    // to, so an orphaned payment can be marked but never approved into an
+    // effect. Everything below that acts on the owner is gated on this.
+    const ownerId = payment.owner_id;
+
     const updated = await prisma.$transaction(async (tx) => {
         const nextPayment = await tx.subscriptionPayment.update({
             where: { id: paymentId },
@@ -299,12 +306,12 @@ const updatePayment = async (
         });
 
         // Confirming a payment activates the owner's chosen plan.
-        if (payload.status === "paid" && payment.status !== "paid") {
+        if (payload.status === "paid" && payment.status !== "paid" && ownerId) {
             const now = new Date();
             // Renewals stack: if the owner is still active, extend from their
             // current expiry; otherwise start from now.
             const currentSub = await tx.ownerSubscription.findUnique({
-                where: { owner_id: payment.owner_id },
+                where: { owner_id: ownerId },
             });
             const base =
                 currentSub?.expiry_date && currentSub.expiry_date.getTime() > now.getTime()
@@ -318,7 +325,7 @@ const updatePayment = async (
             }
 
             await tx.ownerSubscription.update({
-                where: { owner_id: payment.owner_id },
+                where: { owner_id: ownerId },
                 data: {
                     status: SubscriptionStatus.active,
                     plan: nextPayment.plan_type === "yearly" ? "Enterprise" : "Starter",
@@ -344,8 +351,8 @@ const updatePayment = async (
             const credits = planSmsCredits(nextPayment.plan_type);
             if (credits > 0) {
                 await tx.smsWallet.upsert({
-                    where: { owner_id: payment.owner_id },
-                    create: { owner_id: payment.owner_id, balance: credits },
+                    where: { owner_id: ownerId },
+                    create: { owner_id: ownerId, balance: credits },
                     update: { balance: { increment: credits } },
                 });
             }
@@ -355,7 +362,7 @@ const updatePayment = async (
     });
 
     await logAdminActivity({
-        ownerId: payment.owner_id,
+        ownerId: ownerId ?? "",
         actorEmail: admin.email,
         action: "payment_updated",
         detail: `Payment ${payment.invoice_no} marked as ${payload.status ?? "updated"}`,
@@ -363,17 +370,17 @@ const updatePayment = async (
 
     // Approving a payment activates the plan - the owner must regain access
     // immediately, not once the cached entry ages out.
-    invalidateOwnerAccess(payment.owner_id);
+    if (ownerId) invalidateOwnerAccess(ownerId);
 
     // When this approval just activated a paid plan, email the owner their
     // welcome card - the plan, the dates, the receipt and the support line.
     // Fire-and-forget - a slow mail provider must never block the approval
     // response, and the support number is read alongside it because a card
     // without a number to call is the one thing it must not be.
-    if (payload.status === "paid" && payment.status !== "paid") {
+    if (payload.status === "paid" && payment.status !== "paid" && ownerId) {
         const [owner, settings] = await Promise.all([
             prisma.user.findUnique({
-                where: { id: payment.owner_id },
+                where: { id: ownerId },
                 include: { subscription: true },
             }),
             prisma.platformSetting.findFirst().catch(() => null),
@@ -450,10 +457,10 @@ const getDashboardStats = async () => {
  * counts as approved all come from shared/revenueSeries, so the Finance page
  * cannot answer differently.
  *
- * Known limit: both payment tables cascade-delete with their owner, so removing
- * a customer takes their payment history out of these totals with them. Keeping
- * the rows after the owner goes is a schema change; until then the page says so
- * rather than presenting a shrinking figure as lifetime earnings.
+ * Revenue survives its customers: owner_id on both payment tables is SET NULL
+ * rather than cascaded, and nothing here filters by owner, so deleting a
+ * customer no longer takes what they paid out of the platform's lifetime
+ * figures.
  */
 const getPlatformReports = async () => {
     const { startMonth, exclusiveEnd, months } = monthWindow(12);
@@ -470,12 +477,26 @@ const getPlatformReports = async () => {
         plan_status: PlanStatus.active,
         expiry_date: { gt: now },
     };
-    // Has ever paid us. The Active and Churned customer pages require this
-    // before an owner counts as a customer at all, so these counters use it
-    // too - otherwise Reports and those pages describe different people.
-    const hasPaid = { subscription_payments: { some: { status: PAID_STATUS } } } as const;
+    // Has ever paid us anything - a plan or an SMS pack.
+    //
+    // Both, because an owner on a trial who buys a Tk 500 pack has their money
+    // counted in the SMS revenue card at the top of this page; counting them as
+    // "never paid" in the panel below it asked the reader to reconcile two
+    // definitions of paying on one screen. Not a const assertion: Prisma OR takes a
+    // mutable array, so the subscription status is pinned to its enum instead.
+    const hasPaid = {
+        OR: [
+            { subscription_payments: { some: { status: PAID_STATUS as SubPaymentStatus } } },
+            { sms_purchases: { some: { status: PAID_STATUS } } },
+        ],
+    };
     const owner = { role: Role.owner };
 
+    // One snapshot for all of it. The five buckets are subtracted from the
+    // owner total to see whether they add up, and on a pool each count would
+    // otherwise run on its own connection against its own snapshot - so an
+    // ordinary signup mid-flight made the sum come up one short and the page
+    // told the operator to report a miscount that had not happened.
     const [
         subscriptionPaid,
         smsPaid,
@@ -491,7 +512,7 @@ const getPlatformReports = async () => {
         subscriptionSeries,
         smsSeries,
         ownerSeries,
-    ] = await Promise.all([
+    ] = await prisma.$transaction([
         prisma.subscriptionPayment.aggregate({
             where: PAID_SUBSCRIPTION_WHERE,
             _sum: { amount: true },
@@ -520,6 +541,7 @@ const getPlatformReports = async () => {
             by: ["plan_type"],
             where: PAID_SUBSCRIPTION_WHERE,
             _sum: { amount: true },
+            orderBy: { plan_type: "asc" },
         }),
         prisma.user.count({ where: owner }),
 
@@ -542,7 +564,7 @@ const getPlatformReports = async () => {
         prisma.user.count({
             where: {
                 ...owner,
-                NOT: hasPaid,
+                NOT: { ...hasPaid },
                 subscription: { is: { ...live, plan_type: "free_trial" } },
             },
         }),
@@ -552,7 +574,7 @@ const getPlatformReports = async () => {
         prisma.user.count({
             where: {
                 ...owner,
-                NOT: hasPaid,
+                NOT: { ...hasPaid },
                 subscription: { is: { ...live, plan_type: { not: "free_trial" } } },
             },
         }),
@@ -568,7 +590,7 @@ const getPlatformReports = async () => {
         // Signed up and never started: no payment, no live access. Counted, not
         // left as a remainder - a remainder clamped at zero swallows any
         // overlap between the buckets above instead of showing it.
-        prisma.user.count({ where: { ...owner, NOT: hasPaid, subscription: { isNot: live } } }),
+        prisma.user.count({ where: { ...owner, NOT: { ...hasPaid }, subscription: { isNot: live } } }),
 
         prisma.$queryRaw<{ month: string; total: number }[]>`
             SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
@@ -597,7 +619,7 @@ const getPlatformReports = async () => {
     ]);
 
     const planTotal = (plan: string) =>
-        money2(Number(byPlan.find((row) => row.plan_type === plan)?._sum.amount ?? 0));
+        money2(Number(byPlan.find((row) => row.plan_type === plan)?._sum?.amount ?? 0));
 
     // Every approved payment, not monthly + yearly. plan_type also permits
     // free_trial, so adding the two named plans could leave money out of the
@@ -659,11 +681,11 @@ const getPaidCustomers = async () => {
     const owners = await prisma.user.findMany({
         where: {
             role: Role.owner,
-            subscription_payments: { some: { status: "paid" } },
+            subscription_payments: { some: { status: PAID_STATUS } },
         },
         include: {
             subscription: true,
-            subscription_payments: { where: { status: "paid" }, orderBy: { date: "desc" } },
+            subscription_payments: { where: { status: PAID_STATUS }, orderBy: { date: "desc" } },
         },
         orderBy: { created_at: "desc" },
     });
