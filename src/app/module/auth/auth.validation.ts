@@ -5,7 +5,7 @@ export const registerOwnerZodSchema = z.object({
     businessName: z.string("Business name must be string").min(2, "Business name must be at least 2 characters").max(150, "Business name must be at most 150 characters"),
     phone: z.string("Phone must be string").min(6, "Phone must be at least 6 characters").max(20, "Phone must be at most 20 characters"),
     email: z.email("Email must be a valid email address"),
-    password: z.string("Password must be string").min(6, "Password must be at least 6 characters"),
+    password: z.string("Password must be string").min(8, "Password must be at least 8 characters"),
     address: z.string("Address must be string").optional(),
 });
 
@@ -33,5 +33,5 @@ export const forgotPasswordZodSchema = z.object({
 export const resetPasswordZodSchema = z.object({
     email: z.email("Email must be a valid email address"),
     otp: z.string("OTP must be string").length(6, "OTP must be exactly 6 digits"),
-    password: z.string("Password must be string").min(6, "Password must be at least 6 characters"),
+    password: z.string("Password must be string").min(8, "Password must be at least 8 characters"),
 });
