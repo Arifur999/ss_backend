@@ -124,8 +124,14 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
         throw new AppError(status.NOT_FOUND, "Owner not found");
     }
 
-    // Workspace rows carry owner_id (plain column). Team users + subscription
-    // cascade via FK; workspace data is removed table-by-table.
+    // Workspace rows carry owner_id (plain column). Team users and the
+    // subscription cascade via FK; workspace data is removed table-by-table.
+    //
+    // What does NOT go: subscription_payments and sms_purchases are ON DELETE
+    // SET NULL, so every taka this owner ever paid stays on the platform books
+    // with its owner_id nulled. That is deliberate - deleting a customer must
+    // not rewrite last quarter's revenue - and the Reports page tells operators
+    // so. Do not "tidy" those rows into this transaction.
     await prisma.$transaction([
         prisma.saleItemCostLayer.deleteMany({ where: { owner_id: ownerId } }),
         prisma.inventoryBatch.deleteMany({ where: { owner_id: ownerId } }),
@@ -159,7 +165,8 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
         prisma.monthlyTarget.deleteMany({ where: { owner_id: ownerId } }),
         prisma.businessSettings.deleteMany({ where: { owner_id: ownerId } }),
         prisma.recycleBinItem.deleteMany({ where: { owner_id: ownerId } }),
-        // Deleting the user cascades to team members + subscription + payments.
+        // Deleting the user cascades to team members and the subscription.
+        // Their payments survive it, by SET NULL - see the note above.
         prisma.user.delete({ where: { id: ownerId } }),
     ]);
 

@@ -1,4 +1,5 @@
 import z from "zod";
+import { passwordSchema } from "../../utils/password.js";
 import { Role } from "../../../generated/prisma/enums.js";
 
 // Owners can only create workspace staff roles - never another owner/super admin.
@@ -6,7 +7,7 @@ const staffRoles = [Role.manager, Role.sales_staff, Role.accountant] as const;
 
 export const createTeamUserZodSchema = z.object({
     email: z.email("Email must be a valid email address"),
-    password: z.string("Password must be string").min(8, "Password must be at least 8 characters"),
+    password: passwordSchema(),
     full_name: z.string("Full name must be string").min(1, "Full name is required"),
     role: z.enum(staffRoles, "Role must be one of manager, sales_staff, accountant"),
     phone: z.string("Phone must be string").optional(),
@@ -23,7 +24,7 @@ export const updateTeamUserZodSchema = z.object({
     phone: z.string("Phone must be string").optional(),
     is_active: z.boolean("is_active must be a boolean").optional(),
     avatar_url: z.string("avatar_url must be string").optional(),
-    password: z.string("Password must be string").min(8, "Password must be at least 8 characters").optional(),
+    password: passwordSchema().optional(),
     permissions: z.array(z.string("Permission must be string")).optional(),
 });
 
