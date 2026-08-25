@@ -31,6 +31,7 @@ import { ShareholderRoutes } from "../module/shareholder/shareholder.route.js";
 import { SubscriptionRoutes } from "../module/subscription/subscription.route.js";
 import { PlatformFinanceRoutes } from "../module/platformFinance/platformFinance.route.js";
 import { SuperAdminRoutes } from "../module/superAdmin/superAdmin.route.js";
+import { SupportRoutes } from "../module/support/support.route.js";
 import { SupplierRoutes } from "../module/supplier/supplier.route.js";
 import { SupplierPaymentRoutes } from "../module/supplierPayment/supplierPayment.route.js";
 import { UploadRoutes } from "../module/upload/upload.route.js";
@@ -74,5 +75,6 @@ router.use("/platform-settings", PlatformSettingsRoutes);
 router.use("/sms", SmsRoutes);
 router.use("/marketing-contacts", MarketingContactRoutes);
 router.use("/notifications", NotificationRoutes);
+router.use("/support-tickets", SupportRoutes);
 
 export const indexRoute = router;

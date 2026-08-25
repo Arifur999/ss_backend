@@ -1,0 +1,53 @@
+// Support tickets: a conversation between one workspace and the platform.
+//
+// This replaces the WhatsApp button that used to sit on every owner page. A
+// message arriving there carried a phone number and nothing else - no way to
+// tell which of hundreds of workspaces was asking, or what had already been
+// said. A ticket carries its owner, its history, and whether it is still
+// waiting on anyone.
+model SupportTicket {
+  id       String @id @default(uuid())
+  // The workspace that opened it. Team members open tickets against their
+  // owner's workspace, so the whole workspace sees one thread.
+  owner_id String
+  // The individual who opened it - a workspace can have several people.
+  opened_by String
+  subject   String
+  status    SupportTicketStatus @default(open)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  // Sorted on, so an inbox can put the longest-waiting ticket first without
+  // reading every message row.
+  last_message_at DateTime @default(now())
+
+  solved_at DateTime?
+  solved_by String? // super admin email
+
+  owner    User                   @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  // The two questions asked of this table: "what is this workspace's history"
+  // and "what is waiting on us".
+  @@index([owner_id, last_message_at])
+  @@index([status, last_message_at])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id        String @id @default(uuid())
+  ticket_id String
+  body      String @db.Text
+  // Which side wrote it. Stored rather than derived from author_id, so a
+  // deleted staff account cannot turn a platform reply into a customer's.
+  from_admin  Boolean @default(false)
+  author_id   String?
+  author_name String  @default("")
+
+  created_at DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([ticket_id, created_at])
+  @@map("support_ticket_messages")
+}

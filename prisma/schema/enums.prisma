@@ -108,3 +108,11 @@ enum SubPaymentStatus {
   failed
   refunded
 }
+
+// Where a support ticket stands. "open" means it is waiting on the platform -
+// either newly asked or replied to by the customer since the last answer.
+enum SupportTicketStatus {
+  open
+  answered
+  solved
+}

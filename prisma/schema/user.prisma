@@ -50,6 +50,7 @@ model User {
   sms_purchases       SmsPurchase[]
   sms_messages        SmsMessage[]
   marketing_contacts  MarketingContact[]
+  support_tickets     SupportTicket[]
 
   @@index([owner_id])
   @@map("users")
