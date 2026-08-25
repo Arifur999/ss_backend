@@ -4,6 +4,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { SupportService } from "./support.service.js";
+import { subscribe } from "./supportStream.js";
 
 const createTicket = catchAsync(async (req: Request, res: Response) => {
     const result = await SupportService.createTicket(req.body, req.user as IRequestUser);
@@ -35,10 +36,19 @@ const noteTyping = catchAsync(async (req: Request, res: Response) => {
     sendResponse(res, { success: true, httpStatus: status.OK, message: "Noted", data: result });
 });
 
+/**
+ * The live stream. Not wrapped in catchAsync or sendResponse: those end the
+ * response, and this one deliberately stays open.
+ */
+const stream = (req: Request, res: Response) => {
+    subscribe(res, req.user as IRequestUser);
+};
+
 export const SupportController = {
     createTicket,
     getMyTickets,
     getAllTickets,
+    stream,
     noteTyping,
     replyToTicket,
     markSolved,

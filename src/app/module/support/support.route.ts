@@ -13,6 +13,10 @@ const router = Router();
 router.post("/", checkAuth(), validateRequest(createTicketZodSchema), SupportController.createTicket);
 router.get("/my", checkAuth(), SupportController.getMyTickets);
 
+// The live stream both sides listen on. Declared before the "/:id" routes so
+// the word "stream" can never be read as a ticket id.
+router.get("/stream", checkAuth(), SupportController.stream);
+
 // The platform's inbox.
 router.get("/", checkAuth(Role.super_admin), SupportController.getAllTickets);
 router.patch("/:id/solve", checkAuth(Role.super_admin), SupportController.markSolved);

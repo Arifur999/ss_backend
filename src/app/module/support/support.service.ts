@@ -5,6 +5,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { cleanText, statusAfterMessage, subjectFrom } from "./supportRules.js";
 import { clearTyping, isTyping, markTyping } from "./typingRegistry.js";
+import { publish, publishToAdmins } from "./supportStream.js";
 import { ICreateTicketPayload, IReplyTicketPayload } from "./support.validation.js";
 
 const messageSelect = {
@@ -31,7 +32,7 @@ const tagTyping = <T extends { id: string }>(tickets: T[], viewer: "admin" | "cu
 
 const createTicket = async (payload: ICreateTicketPayload, user: IRequestUser) => {
     const body = cleanText(payload.message);
-    return prisma.supportTicket.create({
+    const ticket = await prisma.supportTicket.create({
         data: {
             owner_id: user.ownerId,
             opened_by: user.userId,
@@ -44,6 +45,15 @@ const createTicket = async (payload: ICreateTicketPayload, user: IRequestUser) =
         },
         include: { messages: { select: messageSelect, orderBy: { created_at: "asc" } } },
     });
+
+    // Admins hold no copy of a ticket that did not exist a moment ago, so they
+    // get the whole row - with the customer attached, which is who is asking.
+    const owner = await prisma.user.findUnique({
+        where: { id: user.ownerId },
+        select: { id: true, full_name: true, email: true, phone: true },
+    });
+    publishToAdmins("ticket:new", { ...ticket, owner });
+    return ticket;
 };
 
 const getMyTickets = async (user: IRequestUser) => {
@@ -102,7 +112,7 @@ const replyToTicket = async (ticketId: string, payload: IReplyTicketPayload, use
     // The status follows whoever spoke last, which is what makes the inbox
     // count mean "waiting on us". A customer writing on a solved ticket
     // reopens it rather than being turned away.
-    return prisma.supportTicket.update({
+    const updated = await prisma.supportTicket.update({
         where: { id: ticketId },
         data: {
             status: statusAfterMessage(fromAdmin),
@@ -119,21 +129,45 @@ const replyToTicket = async (ticketId: string, payload: IReplyTicketPayload, use
         },
         include: { messages: { select: messageSelect, orderBy: { created_at: "asc" } } },
     });
+
+    // Only what changed: both sides already hold the conversation, and the new
+    // message is the one thing they do not.
+    publish(updated.owner_id, "ticket:update", {
+        id: updated.id,
+        status: updated.status,
+        last_message_at: updated.last_message_at,
+        solved_at: updated.solved_at,
+        solved_by: updated.solved_by,
+        message: updated.messages[updated.messages.length - 1],
+    });
+    return updated;
 };
 
 const markSolved = async (ticketId: string, user: IRequestUser) => {
     await ticketFor(ticketId, user);
-    return prisma.supportTicket.update({
+    const solved = await prisma.supportTicket.update({
         where: { id: ticketId },
         data: { status: SupportTicketStatus.solved, solved_at: new Date(), solved_by: user.email },
         include: { messages: { select: messageSelect, orderBy: { created_at: "asc" } } },
     });
+    publish(solved.owner_id, "ticket:update", {
+        id: solved.id,
+        status: solved.status,
+        last_message_at: solved.last_message_at,
+        solved_at: solved.solved_at,
+        solved_by: solved.solved_by,
+    });
+    return solved;
 };
 
 /** A keystroke heartbeat. Costs nothing to store and nothing to lose. */
 const noteTyping = async (ticketId: string, user: IRequestUser) => {
-    await ticketFor(ticketId, user);
-    markTyping(ticketId, user.role === Role.super_admin ? "admin" : "customer");
+    const ticket = await ticketFor(ticketId, user);
+    const side = user.role === Role.super_admin ? "admin" : "customer";
+    markTyping(ticketId, side);
+    // Pushed, not polled: a bubble that arrives after the message it was meant
+    // to precede is worse than no bubble at all.
+    publish(ticket.owner_id, "ticket:typing", { id: ticketId, from: side });
     return { ok: true };
 };
 
