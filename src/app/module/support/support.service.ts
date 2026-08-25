@@ -4,6 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { cleanText, statusAfterMessage, subjectFrom } from "./supportRules.js";
+import { clearTyping, isTyping, markTyping } from "./typingRegistry.js";
 import { ICreateTicketPayload, IReplyTicketPayload } from "./support.validation.js";
 
 const messageSelect = {
@@ -13,6 +14,18 @@ const messageSelect = {
     author_name: true,
     created_at: true,
 } as const;
+
+
+/**
+ * Tags each ticket with whether the other side is typing right now. It rides
+ * along on the list the client already polls, so watching for a reply and
+ * watching for the bubble cost one request between them rather than two.
+ */
+const tagTyping = <T extends { id: string }>(tickets: T[], viewer: "admin" | "customer") =>
+    tickets.map((ticket) => ({
+        ...ticket,
+        other_typing: isTyping(ticket.id, viewer === "admin" ? "customer" : "admin"),
+    }));
 
 // ---- The customer's side -------------------------------------------------
 
@@ -34,11 +47,12 @@ const createTicket = async (payload: ICreateTicketPayload, user: IRequestUser) =
 };
 
 const getMyTickets = async (user: IRequestUser) => {
-    return prisma.supportTicket.findMany({
+    const rows = await prisma.supportTicket.findMany({
         where: { owner_id: user.ownerId },
         orderBy: { last_message_at: "desc" },
         include: { messages: { select: messageSelect, orderBy: { created_at: "asc" } } },
     });
+    return tagTyping(rows, "customer");
 };
 
 // ---- The platform's side -------------------------------------------------
@@ -46,7 +60,7 @@ const getMyTickets = async (user: IRequestUser) => {
 const getAllTickets = async (statusFilter?: string) => {
     const wanted = String(statusFilter || "").trim();
     const isKnown = (Object.values(SupportTicketStatus) as string[]).includes(wanted);
-    return prisma.supportTicket.findMany({
+    const rows = await prisma.supportTicket.findMany({
         where: isKnown ? { status: wanted as SupportTicketStatus } : {},
         // Oldest unanswered first would bury the rest; the inbox sorts by
         // status on the client and this keeps the newest conversation on top.
@@ -56,6 +70,7 @@ const getAllTickets = async (statusFilter?: string) => {
             owner: { select: { id: true, full_name: true, email: true, phone: true } },
         },
     });
+    return tagTyping(rows, "admin");
 };
 
 // ---- Both sides ----------------------------------------------------------
@@ -80,6 +95,9 @@ const replyToTicket = async (ticketId: string, payload: IReplyTicketPayload, use
     await ticketFor(ticketId, user);
     const fromAdmin = user.role === Role.super_admin;
     const now = new Date();
+    // Whoever just sent is no longer typing; leaving it set hangs the bubble
+    // under the message that was being written, reading as a second one coming.
+    clearTyping(ticketId, fromAdmin ? "admin" : "customer");
 
     // The status follows whoever spoke last, which is what makes the inbox
     // count mean "waiting on us". A customer writing on a solved ticket
@@ -112,9 +130,17 @@ const markSolved = async (ticketId: string, user: IRequestUser) => {
     });
 };
 
+/** A keystroke heartbeat. Costs nothing to store and nothing to lose. */
+const noteTyping = async (ticketId: string, user: IRequestUser) => {
+    await ticketFor(ticketId, user);
+    markTyping(ticketId, user.role === Role.super_admin ? "admin" : "customer");
+    return { ok: true };
+};
+
 export const SupportService = {
     createTicket,
     getMyTickets,
+    noteTyping,
     getAllTickets,
     replyToTicket,
     markSolved,

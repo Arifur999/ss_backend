@@ -30,10 +30,16 @@ const markSolved = catchAsync(async (req: Request, res: Response) => {
     sendResponse(res, { success: true, httpStatus: status.OK, message: "Ticket marked as solved", data: result });
 });
 
+const noteTyping = catchAsync(async (req: Request, res: Response) => {
+    const result = await SupportService.noteTyping(req.params.id as string, req.user as IRequestUser);
+    sendResponse(res, { success: true, httpStatus: status.OK, message: "Noted", data: result });
+});
+
 export const SupportController = {
     createTicket,
     getMyTickets,
     getAllTickets,
+    noteTyping,
     replyToTicket,
     markSolved,
 };
