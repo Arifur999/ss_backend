@@ -10,7 +10,7 @@ import { invalidateUser } from "../../utils/authCache.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
 import { SIGNUP_SMS_CREDITS } from "../../utils/smsGrants.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
-import { tokenUtils } from "../../utils/token.js";
+import { newSessionExp, sessionTimeLeftMs, tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
 
 const TRIAL_DAYS = 7;
@@ -167,13 +167,17 @@ const issueSession = async (user: {
     }
 
     const tokenPayload = buildTokenPayload(user);
+    // Signing in is the only thing that starts a session clock. From here the
+    // deadline is fixed: refreshing carries it forward, it never moves.
+    const sessionExp = newSessionExp();
 
     return {
         user: { id: user.id, email: user.email },
         profile: toProfile(user),
         subscription,
-        accessToken: tokenUtils.getAccessToken(tokenPayload),
-        refreshToken: tokenUtils.getRefreshToken(tokenPayload),
+        accessToken: tokenUtils.getAccessToken(tokenPayload, sessionExp),
+        refreshToken: tokenUtils.getRefreshToken(tokenPayload, sessionExp),
+        sessionMaxAgeMs: sessionTimeLeftMs(sessionExp),
     };
 };
 
@@ -342,7 +346,11 @@ const getMe = async (requestUser: IRequestUser) => {
     };
 };
 
-const getNewTokens = async (refreshTokenPayload: IRequestUser) => {
+// The refresh token carries one claim the access token does not: when this
+// session must end. Everything else about the user is re-read from the row.
+export type IRefreshTokenPayload = IRequestUser & { sessionExp?: number };
+
+const getNewTokens = async (refreshTokenPayload: IRefreshTokenPayload) => {
     const user = await prisma.user.findUnique({
         where: { id: refreshTokenPayload.userId },
     });
@@ -358,11 +366,27 @@ const getNewTokens = async (refreshTokenPayload: IRequestUser) => {
         throw new AppError(status.UNAUTHORIZED, "Your password was changed. Please sign in again.");
     }
 
+    // Tokens minted before sessionExp existed carry none. Rather than sign
+    // those people out the moment this ships, they are given a window starting
+    // now - the old token could not have been more than a day old anyway.
+    const sessionExp = refreshTokenPayload.sessionExp ?? newSessionExp();
+    const timeLeftMs = sessionTimeLeftMs(sessionExp);
+
+    // jwt.verify already rejects a refresh token past its own exp, and that exp
+    // is capped to sessionExp - so this only catches a token whose claim says
+    // the session is over while its signature has not expired yet.
+    if (timeLeftMs <= 0) {
+        throw new AppError(status.UNAUTHORIZED, "Your session has ended. Please sign in again.");
+    }
+
     const tokenPayload = buildTokenPayload(user);
 
     return {
-        accessToken: tokenUtils.getAccessToken(tokenPayload),
-        refreshToken: tokenUtils.getRefreshToken(tokenPayload),
+        accessToken: tokenUtils.getAccessToken(tokenPayload, sessionExp),
+        // Same deadline, not a new one: rotation renews the token, never the
+        // session.
+        refreshToken: tokenUtils.getRefreshToken(tokenPayload, sessionExp),
+        sessionMaxAgeMs: timeLeftMs,
     };
 };
 

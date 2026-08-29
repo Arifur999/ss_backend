@@ -7,7 +7,7 @@ import catchAsync from "../../shared/catchAsync.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { cookieUtils } from "../../utils/cookie.js";
 import { jwtUtils } from "../../utils/jwt.js";
-import { AuthService } from "./auth.service.js";
+import { AuthService, IRefreshTokenPayload } from "./auth.service.js";
 
 const registerOwner = catchAsync(async (req: Request, res: Response) => {
     // Registration never sets cookies any more: the account exists but stays
@@ -40,7 +40,7 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
 
     // Only reached when the login OTP gate is switched off (LOGIN_OTP_ENABLED
     // =false): log straight in with the httpOnly cookie pair.
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
+    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
 
     sendResponse(res, {
         success: true,
@@ -59,7 +59,7 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
 const verifyOtp = catchAsync(async (req: Request, res: Response) => {
     const result = await AuthService.verifyEmailOtp(req.body.email, req.body.otp);
 
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
+    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
 
     sendResponse(res, {
         success: true,
@@ -135,10 +135,13 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
         throw new AppError(status.UNAUTHORIZED, "Invalid refresh token");
     }
 
-    const result = await AuthService.getNewTokens(verified.decoded as unknown as IRequestUser);
+    const result = await AuthService.getNewTokens(verified.decoded as unknown as IRefreshTokenPayload);
 
-    // Token rotation: every refresh issues a brand-new access+refresh pair.
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken);
+    // Token rotation: every refresh issues a brand-new access+refresh pair,
+    // both stamped with the ORIGINAL session deadline. The cookies are given
+    // only the time left in that window, so the browser drops them exactly
+    // when the session ends instead of holding dead tokens.
+    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
 
     sendResponse(res, {
         success: true,

@@ -9,7 +9,10 @@ interface ENVConfig {
     ACCESS_TOKEN_SECRET: string;
     REFRESH_TOKEN_SECRET: string;
     ACCESS_TOKEN_EXPIRES_IN: string;
-    REFRESH_TOKEN_EXPIRES_IN: string;
+    // How long one sign-in lasts, in days. The refresh token and both auth
+    // cookies are all sized from this single number, so they cannot drift
+    // apart the way a hardcoded cookie maxAge did.
+    SESSION_DAYS: number;
     // Email one-time-code required on every login. Defaults on; set
     // LOGIN_OTP_ENABLED=false to fall back to password-only login if the mail
     // provider is down and users would otherwise be locked out.
@@ -85,11 +88,15 @@ export const env: ENVConfig = {
     DATABASE_URL: process.env.DATABASE_URL as string,
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET as string,
     REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET as string,
-    // Sessions last one day: both tokens die together 24h after sign-in, so
-    // everyone is logged out daily and has to re-authenticate with a fresh
-    // emailed code. (Set the env vars only if you deliberately want longer.)
+    // Short-lived on purpose: it is rotated silently by /auth/refresh-token,
+    // which the frontend calls on the first 401. What a user actually feels is
+    // SESSION_DAYS below.
     ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN || "1d",
-    REFRESH_TOKEN_EXPIRES_IN: process.env.REFRESH_TOKEN_EXPIRES_IN || "1d",
+    // One sign-in lasts 15 days, then a freshly emailed code is required.
+    // Absolute, not sliding: the expiry is stamped into the refresh token at
+    // login and carried unchanged through every rotation, so staying active
+    // does not push it further out.
+    SESSION_DAYS: Number(process.env.SESSION_DAYS) > 0 ? Number(process.env.SESSION_DAYS) : 15,
     LOGIN_OTP_ENABLED: process.env.LOGIN_OTP_ENABLED !== "false",
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
     SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL as string,
