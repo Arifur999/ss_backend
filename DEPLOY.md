@@ -206,6 +206,28 @@ docker compose restart backend     # restart just the API
 docker compose down && docker compose up -d --build   # full rebuild
 ```
 
+## Running a one-off script
+
+The scripts in `scripts/` are TypeScript and need the dev dependencies plus a
+generated Prisma client, neither of which the runtime image carries — and
+Postgres is not published to the host, so the script has to run on the compose
+network. Build the Dockerfile's `build` stage, which has all three:
+
+```bash
+cd /srv/hatim/hatim_Backend
+git pull
+
+# The network the stack is actually on, read from the running backend.
+NET=$(docker inspect -f '{{range $k, $_ := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q backend)")
+
+docker build --target build -t hatim-scripts .
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixOpeningStockDp.ts
+```
+
+Take a backup first (`scripts/backup-db.sh`) for anything that writes. Both
+one-off scripts here print what they would change and are safe to run twice;
+`fixOpeningStockDp.ts` writes nothing at all until you add `--apply`.
+
 ## Backups
 
 `scripts/backup-db.sh` dumps the database to `/srv/hatim/backups` and deletes
