@@ -18,3 +18,21 @@ export const roundTaka = (value: unknown): number => {
     if (!Number.isFinite(numeric)) return 0;
     return (numeric < 0 ? -Math.round(-numeric) : Math.round(numeric)) || 0;
 };
+
+/**
+ * A DP after its percentage discount, to the whole taka.
+ *
+ * The product row stores the list DP and the discount separately, so the list
+ * can print "Tk 11,400 -10%". Everything that records what the goods actually
+ * cost - an opening-stock batch, a sale line's cost - has to use this instead
+ * of the raw DP, or profit is computed against a price nobody paid.
+ *
+ * Subtracts rather than multiplying by (1 - pct/100), and rounds once at the
+ * end: the same rule as the frontend's actualDp in lib/purchaseAmounts.ts, so
+ * both sides of the wire agree to the taka.
+ */
+export const actualDp = (dpPrice: unknown, discountPct: unknown): number => {
+    const dp = roundTaka(dpPrice);
+    const pct = Number(discountPct) || 0;
+    return roundTaka(dp - (dp * pct) / 100);
+};

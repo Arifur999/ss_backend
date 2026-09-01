@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { assertOwnedRecord } from "../../shared/assertOwnership.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
+import { actualDp } from "../../shared/money.js";
 import { IBulkUpdatePricesPayload, ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
 import type z from "zod";
 import type { recordPriceUpdateZodSchema } from "./product.validation.js";
@@ -26,7 +27,11 @@ type Tx = Prisma.TransactionClient;
 // and an inventory history entry for a newly created product.
 const bootstrapProductInventory = async (
     tx: Tx,
-    product: { id: string; name: string; opening_qty: number; cost_price: Prisma.Decimal; selling_price: Prisma.Decimal },
+    product: {
+        id: string; name: string; opening_qty: number;
+        cost_price: Prisma.Decimal; selling_price: Prisma.Decimal;
+        dp_discount: Prisma.Decimal | null;
+    },
     user: IRequestUser
 ) => {
     await tx.inventory.upsert({
@@ -48,7 +53,13 @@ const bootstrapProductInventory = async (
                 source_type: "opening_stock",
                 received_qty: product.opening_qty,
                 remaining_qty: product.opening_qty,
-                dp_price: product.cost_price,
+                // The DP after its discount, not the list DP. This batch is
+                // what FIFO charges a sale against, so pricing it at the list
+                // rate reported every sale of opening stock as costing more
+                // than it did - the Sales Ledger showed Tk 11,400 on a product
+                // bought at Tk 10,260, and understated the profit by the
+                // difference.
+                dp_price: actualDp(product.cost_price, product.dp_discount),
                 mrp_price: product.selling_price,
                 received_date: new Date(),
                 created_by: user.userId,
@@ -384,7 +395,7 @@ const updateProduct = async (id: string, payload: IUpdateProductPayload, user: I
         // their profit finally shows up in the dashboard and reports. Lines that
         // already recorded a cost are left untouched, so historical costs (and
         // FIFO-derived ones) stay accurate.
-        const newCost = Number(updated.cost_price ?? 0);
+        const newCost = actualDp(updated.cost_price, updated.dp_discount);
         if (newCost > 0) {
             await tx.saleItem.updateMany({
                 where: { owner_id: user.ownerId, product_id: id, cost_price: 0 },
@@ -417,7 +428,7 @@ const updateProduct = async (id: string, payload: IUpdateProductPayload, user: I
                         source_type: "opening_stock",
                         received_qty: payload.opening_qty,
                         remaining_qty: payload.opening_qty,
-                        dp_price: updated.cost_price,
+                        dp_price: actualDp(updated.cost_price, updated.dp_discount),
                         mrp_price: updated.selling_price,
                         received_date: new Date(),
                         created_by: user.userId,
