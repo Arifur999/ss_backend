@@ -8,7 +8,7 @@ import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { createReceiveStockBatch } from "../inventory/fifo.helpers.js";
-import { ICreatePurchasePayload, IReceivePurchaseItemPayload, IUpdatePurchasePayload } from "./purchase.validation.js";
+import { ICreatePurchasePayload, IReceivePurchaseItemPayload, IUpdatePurchasePayload, IAddPurchaseItemPayload } from "./purchase.validation.js";
 
 // Supabase nested selects returned relations under their table names:
 // purchases.purchase_items[].purchase_receives[] - keep that shape.
@@ -711,6 +711,65 @@ const deletePurchase = async (id: string, user: IRequestUser, recycleMeta?: IRec
     return { message: "Purchase moved to recycle bin" };
 };
 
+/**
+ * Add a line to a purchase that already exists.
+ *
+ * The Purchase Ledger could edit and remove lines but never add one, so a line
+ * left off an invoice meant deleting the whole thing and typing it again.
+ *
+ * The new line has received nothing, so besides re-totalling the purchase this
+ * refreshes the shipping status: adding to a fully-received invoice drops it
+ * back to partial, which is what the Product Received page needs to see before
+ * it will offer the new line for receiving.
+ *
+ * Nothing here touches inventory or FIFO. Ordering goods is not receiving
+ * them - stock moves when the line is received, exactly as it does for a line
+ * that was on the purchase from the start.
+ */
+const addPurchaseItem = async (purchaseId: string, payload: IAddPurchaseItemPayload, user: IRequestUser) => {
+    const purchase = await prisma.purchase.findFirst({
+        where: { id: purchaseId, owner_id: user.ownerId },
+        include: { purchase_items: true },
+    });
+
+    if (!purchase) {
+        throw new AppError(status.NOT_FOUND, "Purchase not found");
+    }
+
+    // The product has to be this workspace's, the same check createPurchase
+    // makes on every line it writes.
+    const owned = await prisma.product.count({
+        where: { id: payload.product_id, owner_id: user.ownerId },
+    });
+    if (owned !== 1) {
+        throw new AppError(status.NOT_FOUND, "Product not found");
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const item = await tx.purchaseItem.create({
+            data: {
+                ...payload,
+                owner_id: user.ownerId,
+                purchase_id: purchase.id,
+                received_qty: 0,
+            },
+        });
+
+        const total = purchase.purchase_items.reduce(
+            (sum, row) => sum + Number(row.total_amount || 0),
+            Number(item.total_amount || 0)
+        );
+        await tx.purchase.update({
+            where: { id: purchase.id },
+            data: { total_amount: total, net_amount: total },
+        });
+
+        await refreshShippingStatus(tx, purchase.id);
+
+        return item;
+    });
+};
+
 // Delete a single line item from a purchase. Only allowed when nothing has been
 // received against it (otherwise inventory/FIFO would be left inconsistent). If
 // it's the purchase's only remaining item, the whole purchase is removed (to
@@ -758,6 +817,7 @@ export const PurchaseService = {
     deleteReceive,
     setItemReceivedQty,
     updatePurchaseItem,
+    addPurchaseItem,
     deletePurchaseItem,
     deletePurchase,
 };

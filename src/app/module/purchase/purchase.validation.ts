@@ -30,6 +30,15 @@ export const createPurchaseZodSchema = z.object({
     items: z.array(purchaseItemZodSchema).min(1, "At least one item is required"),
 });
 
+/**
+ * A line added to a purchase that already exists.
+ *
+ * Same shape as a line on a new purchase, minus received_qty: something being
+ * added now has not been received, and letting a caller claim otherwise would
+ * put stock in the ledger that never arrived and has no FIFO batch behind it.
+ */
+export const addPurchaseItemZodSchema = purchaseItemZodSchema.omit({ received_qty: true });
+
 export const updatePurchaseZodSchema = z.object({
     si_no: z.string("SI no must be string").optional(),
     supplier_id: z.uuid("Supplier id must be a valid UUID").optional(),
@@ -97,6 +106,7 @@ export const updateReceiveZodSchema = z.object({
 });
 
 export type ICreatePurchasePayload = z.infer<typeof createPurchaseZodSchema>;
+export type IAddPurchaseItemPayload = z.infer<typeof addPurchaseItemZodSchema>;
 export type IUpdatePurchasePayload = z.infer<typeof updatePurchaseZodSchema>;
 export type IReceivePurchaseItemPayload = z.infer<typeof receivePurchaseItemZodSchema>;
 
