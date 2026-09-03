@@ -76,6 +76,26 @@ const getTransporter = () => {
 const fromAddress = () =>
     isOAuthConfigured() ? env.GOOGLE.MAIL_USER : env.EMAIL_SENDER.SMTP_FROM;
 
+/**
+ * Which provider will send the next email, and the address it will send from.
+ *
+ * The chain above is silent about itself. Resend is tried FIRST, so filling in
+ * the SMTP block while RESEND_API_KEY is still set changes nothing and reports
+ * nothing - mail keeps going out from the old address with no error anywhere.
+ * Printed once at boot, this is what tells you which credentials are live.
+ *
+ * Only the From address is named. It is on every email this server sends, so
+ * it is not a secret; keys and passwords are deliberately not printed.
+ */
+export const mailProviderSummary = (): string => {
+    if (isResendConfigured()) return `Resend, from ${env.RESEND.FROM_EMAIL}`;
+    if (isOAuthConfigured()) return `Google OAuth2, from ${env.GOOGLE.MAIL_USER}`;
+    if (isSmtpConfigured()) {
+        return `SMTP ${env.EMAIL_SENDER.SMTP_HOST}:${env.EMAIL_SENDER.SMTP_PORT}, from ${env.EMAIL_SENDER.SMTP_FROM}`;
+    }
+    return "no provider configured - nothing will be delivered";
+};
+
 // Plain HTTPS call to Resend's API - no SDK needed, Node 22's built-in fetch
 // is enough. Throws on any non-2xx response so the caller's try/catch can
 // fall through to the next provider.

@@ -1,6 +1,7 @@
 import { Server } from "http";
 import app from "./app.js";
 import { seedSuperAdmin } from "./app/utils/seed.js";
+import { mailProviderSummary } from "./app/utils/email.js";
 import { env } from "./config/env.js";
 
 let server: Server;
@@ -10,6 +11,10 @@ const bootstrap = async () => {
         await seedSuperAdmin();
         server = app.listen(env.PORT, () => {
             console.log(`Server is running on http://localhost:${env.PORT}`);
+            // Which mail credentials won the resolution order in utils/email.ts.
+            // Changing the sender is an env change with no visible confirmation
+            // anywhere else, and the wrong one fails silently.
+            console.log(`[mail] ${mailProviderSummary()}`);
         });
     } catch (error) {
         console.error("Failed to start server:", error);
