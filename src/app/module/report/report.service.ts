@@ -89,34 +89,46 @@ const reportEmailHtml = (payload: IEmailReportPayload, businessName: string) => 
 `;
 
 /**
- * Email a report to the business owner.
+ * Email a report to the business.
  *
  * The address is read from the database, never from the request: whoever is
- * signed in can only ever send this to their own workspace's owner. That is
- * what makes it safe to render figures the browser computed - see the note in
+ * signed in can only ever send this to their own workspace. That is what makes
+ * it safe to render figures the browser computed - see the note in
  * report.validation.ts.
+ *
+ * The business address from Settings is preferred over the owner's login
+ * email, because that is the one a shop actually reads. It falls back to the
+ * login email when Settings carries none, so the button never fails for want
+ * of a field somebody has not filled in.
  */
 const emailReport = async (payload: IEmailReportPayload, user: IRequestUser) => {
-    const owner = await prisma.user.findUnique({
-        where: { id: user.ownerId },
-        select: { email: true, full_name: true },
-    });
+    const [owner, settings] = await Promise.all([
+        prisma.user.findUnique({
+            where: { id: user.ownerId },
+            select: { email: true, full_name: true },
+        }),
+        prisma.businessSettings.findFirst({
+            where: { owner_id: user.ownerId },
+            select: { name_en: true, name_bn: true, email: true },
+        }),
+    ]);
 
-    if (!owner?.email) {
-        throw new AppError(status.NOT_FOUND, "No owner email on this account to send the report to");
+    const recipient = String(settings?.email || "").trim() || String(owner?.email || "").trim();
+
+    if (!recipient) {
+        throw new AppError(
+            status.NOT_FOUND,
+            "No email address to send the report to. Add one under Settings, or to the owner's account."
+        );
     }
 
-    const settings = await prisma.businessSettings.findFirst({
-        where: { owner_id: user.ownerId },
-        select: { name_en: true, name_bn: true },
-    });
     const businessName = settings?.name_en || settings?.name_bn || PRODUCT_NAME;
 
     const subject = payload.period
         ? `${payload.title} - ${payload.period}`
         : payload.title;
 
-    const sent = await sendTemplatedEmail(owner.email, subject, reportEmailHtml(payload, businessName));
+    const sent = await sendTemplatedEmail(recipient, subject, reportEmailHtml(payload, businessName));
 
     if (!sent) {
         // Every configured provider refused, or none is configured. Saying so
@@ -127,7 +139,7 @@ const emailReport = async (payload: IEmailReportPayload, user: IRequestUser) => 
         );
     }
 
-    return { sent: true, email: owner.email };
+    return { sent: true, email: recipient };
 };
 
 export const ReportService = { emailReport };
