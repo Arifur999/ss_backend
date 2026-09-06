@@ -206,6 +206,40 @@ model RecycleBinItem {
   @@map("recycle_bin_items")
 }
 
+// An unfinished purchase order or invoice, parked so it can be picked up later.
+//
+// Deliberately NOT a row in `purchases` / `sales` with a draft status. A draft
+// is a saved FORM, not an order: it is usually incomplete - that is the point -
+// and the real create validators require at least one fully-formed line. Worse,
+// a half-written row in those tables leaks into figures nobody would re-check:
+// the inventory page aggregates purchase_items and sale_items with no join back
+// to their parent, supplier and customer dues are derived from due_amount, the
+// sales ledger sums net_amount over every row, and the row write itself is what
+// reserves an si_no / invoice_no.
+//
+// Nothing else queries this table, so none of that can happen. Publishing loads
+// the snapshot back into the form and the user presses the ordinary button.
+//
+// Shaped like RecycleBinItem above, down to `kind` being a plain string rather
+// than a Postgres enum - an enum here would buy nothing and cost a migration
+// every time a third kind of draft turns up.
+model Draft {
+  id         String   @id @default(uuid())
+  owner_id   String
+  /// "purchase_order" | "sale"
+  kind       String
+  title      String   @default("")
+  subtitle   String   @default("")
+  amount     Decimal  @default(0) @db.Decimal(15, 2)
+  data       Json?
+  created_by String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([owner_id, kind])
+  @@map("drafts")
+}
+
 // Real data behind the Super Admin "Activity" page (was demo data before).
 model AdminActivity {
   id          String   @id @default(uuid())
