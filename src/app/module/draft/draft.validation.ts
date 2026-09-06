@@ -25,6 +25,9 @@ export const saveDraftZodSchema = z.object({
     title: line.optional(),
     subtitle: line.optional(),
     amount: z.number("Amount must be a number").optional(),
+    // Which shape `data` is in. The page refuses a stamp it does not know
+    // rather than hydrating a form half-way - see lib/draftPayload.ts.
+    payload_version: z.number("Payload version must be a number").int().min(1).optional(),
     // An object, but an opaque one. Unknown values rather than `any` so nothing
     // downstream can read a field off it without deciding what it is first.
     data: z.record(z.string(), z.unknown(), "Draft data must be an object"),

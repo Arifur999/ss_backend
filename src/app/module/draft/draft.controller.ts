@@ -24,6 +24,17 @@ const listDrafts = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getDraft = catchAsync(async (req: Request, res: Response) => {
+    const result = await DraftService.getDraft(req.params.id as string, req.user as IRequestUser);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Draft retrieved successfully",
+        data: result,
+    });
+});
+
 const saveDraft = catchAsync(async (req: Request, res: Response) => {
     const result = await DraftService.saveDraft(req.body, req.user as IRequestUser);
 
@@ -61,4 +72,4 @@ const deleteDraft = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
-export const DraftController = { listDrafts, saveDraft, updateDraft, deleteDraft };
+export const DraftController = { listDrafts, getDraft, saveDraft, updateDraft, deleteDraft };

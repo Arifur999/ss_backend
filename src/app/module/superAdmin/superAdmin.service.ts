@@ -165,6 +165,9 @@ const deleteOwner = async (ownerId: string, admin: IRequestUser) => {
         prisma.monthlyTarget.deleteMany({ where: { owner_id: ownerId } }),
         prisma.businessSettings.deleteMany({ where: { owner_id: ownerId } }),
         prisma.recycleBinItem.deleteMany({ where: { owner_id: ownerId } }),
+        // Drafts have no foreign key back to the workspace - like the recycle bin
+        // above - so they only go when a line here says so.
+        prisma.draft.deleteMany({ where: { owner_id: ownerId } }),
         // Deleting the user cascades to team members and the subscription.
         // Their payments survive it, by SET NULL - see the note above.
         prisma.user.delete({ where: { id: ownerId } }),
@@ -246,6 +249,9 @@ const resetOwnerData = async (ownerId: string, password: string, admin: IRequest
         prisma.shareholder.deleteMany({ where: { owner_id: ownerId } }),
         prisma.monthlyTarget.deleteMany({ where: { owner_id: ownerId } }),
         prisma.recycleBinItem.deleteMany({ where: { owner_id: ownerId } }),
+        // Drafts have no foreign key back to the workspace - like the recycle bin
+        // above - so they only go when a line here says so.
+        prisma.draft.deleteMany({ where: { owner_id: ownerId } }),
     ]);
 
     await logAdminActivity({

@@ -232,7 +232,11 @@ model Draft {
   subtitle   String   @default("")
   amount     Decimal  @default(0) @db.Decimal(15, 2)
   data       Json?
+  /// The shape of `data`. A page refuses a draft stamped with a version it no
+  /// longer understands, rather than hydrating a form half-way.
+  payload_version Int   @default(1)
   created_by String?
+  updated_by String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
