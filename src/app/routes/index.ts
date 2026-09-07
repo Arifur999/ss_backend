@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { AccountRoutes } from "../module/account/account.route.js";
+import { ActivityRoutes } from "../module/activity/activity.route.js";
 import { AccountTransferRoutes } from "../module/accountTransfer/accountTransfer.route.js";
 import { AttendanceRoutes } from "../module/attendance/attendance.route.js";
 import { AuthRoutes } from "../module/auth/auth.route.js";
@@ -62,6 +63,7 @@ router.use("/loan-lenders", LoanLenderRoutes);
 router.use("/loans", LoanRoutes);
 router.use("/reports", ReportRoutes);
 router.use("/drafts", DraftRoutes);
+router.use("/activity", ActivityRoutes);
 router.use("/expenses", ExpenseRoutes);
 router.use("/other-incomes", OtherIncomeRoutes);
 router.use("/purchases", PurchaseRoutes);
