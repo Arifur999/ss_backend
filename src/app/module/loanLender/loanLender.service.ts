@@ -44,9 +44,24 @@ const getAllLenders = async (user: IRequestUser) => {
     }));
 };
 
+/**
+ * Dates arrive as "YYYY-MM-DD" strings and the column is a DateTime, so the
+ * payload cannot go straight through - Prisma rejects the string and the whole
+ * save comes back as "Invalid data sent to database", which tells the operator
+ * nothing about which field was wrong.
+ *
+ * Three cases, and they are not the same: absent means leave it alone, null
+ * means clear it, a string means set it.
+ */
+const withParsedDates = <T extends { opening_date?: string | null }>(payload: T) => {
+    const { opening_date, ...rest } = payload;
+    if (opening_date === undefined) return rest;
+    return { ...rest, opening_date: opening_date ? new Date(opening_date) : null };
+};
+
 const createLender = async (payload: ICreateLoanLenderPayload, user: IRequestUser) => {
     return prisma.loanLender.create({
-        data: { ...payload, owner_id: user.ownerId, created_by: user.userId },
+        data: { ...withParsedDates(payload), owner_id: user.ownerId, created_by: user.userId },
     });
 };
 
@@ -61,7 +76,7 @@ const updateLender = async (id: string, payload: IUpdateLoanLenderPayload, user:
 
     return prisma.loanLender.update({
         where: { id },
-        data: payload,
+        data: withParsedDates(payload),
     });
 };
 
