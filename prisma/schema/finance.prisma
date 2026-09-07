@@ -59,6 +59,11 @@ model LoanLender {
   phone           String     @default("")
   address         String     @default("")
   opening_balance Decimal    @default(0) @db.Decimal(15, 2)
+  /// The day the opening balance is as of - what a passbook prints on its
+  /// first line. Nullable because every existing account predates the field;
+  /// the statement still treats the opening balance as coming before every
+  /// transaction, which is what "opening" means.
+  opening_date    DateTime?  @db.Date
   notes           String     @default("")
   is_active       Boolean    @default(true)
   deleted_at      DateTime?

@@ -7,6 +7,7 @@ export const createLoanLenderZodSchema = z.object({
     phone: z.string("Phone must be string").optional(),
     address: z.string("Address must be string").optional(),
     opening_balance: z.number("Opening balance must be a number").optional(),
+    opening_date: z.string("Opening date must be string (YYYY-MM-DD)").nullable().optional(),
     notes: z.string("Notes must be string").optional(),
     is_active: z.boolean("is_active must be a boolean").optional(),
 });
