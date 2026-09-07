@@ -14,6 +14,9 @@ const INK = "#0f172a";
 const MUTED = "#64748b";
 const LINE = "#e2e8f0";
 
+// Sits UNDER the tables, because a total belongs beneath what it totals -
+// a cash count is read as a list of notes and then the sum of them.
+//
 // The last summary figure is the one the report exists for - a cash count's
 // total, a month's profit - so it is drawn as a panel rather than as one more
 // line in a list. Everything above it is context for it.
@@ -111,8 +114,8 @@ const reportEmailHtml = (payload: IEmailReportPayload, businessName: string) => 
             <td style="padding: 30px 32px 8px;">
               <h1 style="margin: 0 0 6px; font-size: 22px; line-height: 1.25; color: ${INK};">${escapeHtml(payload.title)}</h1>
               ${payload.period ? `<p style="margin: 0 0 26px; font-size: 13px; color: ${MUTED};">${escapeHtml(payload.period)}</p>` : `<div style="height: 20px;"></div>`}
-              ${summaryHtml(payload.summary)}
               ${payload.tables.map(tableHtml).join("")}
+              ${summaryHtml(payload.summary)}
             </td>
           </tr>
           <tr>
