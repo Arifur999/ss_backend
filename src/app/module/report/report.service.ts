@@ -14,40 +14,71 @@ const INK = "#0f172a";
 const MUTED = "#64748b";
 const LINE = "#e2e8f0";
 
+// The last summary figure is the one the report exists for - a cash count's
+// total, a month's profit - so it is drawn as a panel rather than as one more
+// line in a list. Everything above it is context for it.
 const summaryHtml = (rows: IEmailReportPayload["summary"]) => {
     if (rows.length === 0) return "";
+
+    const lead = rows.slice(0, -1);
+    const headline = rows[rows.length - 1];
+
     return `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 28px;">
-        ${rows.map((row, index) => `
-          <tr>
-            <td style="padding: 10px 0; font-size: 13px; color: ${MUTED}; ${index > 0 ? `border-top: 1px solid ${LINE};` : ""}">
-              ${escapeHtml(row.label)}
-            </td>
-            <td align="right" style="padding: 10px 0; font-size: 14px; font-weight: bold; color: ${INK}; ${index > 0 ? `border-top: 1px solid ${LINE};` : ""}">
-              ${escapeHtml(row.value)}
-            </td>
-          </tr>
-        `).join("")}
+      ${lead.length > 0 ? `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 18px;">
+          ${lead.map((row) => `
+            <tr>
+              <td style="padding: 9px 0; font-size: 13px; color: ${MUTED}; border-bottom: 1px solid ${LINE};">
+                ${escapeHtml(row.label)}
+              </td>
+              <td align="right" style="padding: 9px 0; font-size: 14px; font-weight: bold; color: ${INK}; border-bottom: 1px solid ${LINE};">
+                ${escapeHtml(row.value)}
+              </td>
+            </tr>
+          `).join("")}
+        </table>
+      ` : ""}
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 30px;">
+        <tr>
+          <td style="background-color: ${INK}; border-radius: 12px; padding: 18px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="font-size: 12px; color: rgba(255,255,255,0.65); letter-spacing: 0.3px;">
+                  ${escapeHtml(headline.label)}
+                </td>
+                <td align="right" style="font-size: 24px; font-weight: bold; color: #ffffff;">
+                  ${escapeHtml(headline.value)}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
       </table>
     `;
 };
 
+// Zebra rows, because these are read across: a long column of figures with no
+// banding is where an eye slips a line. Nested tables and inline styles for the
+// reason utils/email.ts gives - Outlook renders mail with Word's engine.
 const tableHtml = (table: IEmailReportPayload["tables"][number]) => {
     if (table.rows.length === 0) return "";
     return `
-      <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: ${INK};">${escapeHtml(table.title)}</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 28px;">
+      <p style="margin: 0 0 10px; font-size: 12px; font-weight: bold; color: ${MUTED}; text-transform: uppercase; letter-spacing: 0.6px;">
+        ${escapeHtml(table.title)}
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 30px; border: 1px solid ${LINE}; border-radius: 10px; overflow: hidden;">
         <tr>
           ${table.columns.map((column, index) => `
-            <th align="${index === 0 ? "left" : "right"}" style="padding: 8px 6px; background-color: ${INK}; color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;">
+            <th align="${index === 0 ? "left" : "right"}" style="padding: 10px 12px; background-color: ${INK}; color: #ffffff; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
               ${escapeHtml(column)}
             </th>
           `).join("")}
         </tr>
-        ${table.rows.map(row => `
-          <tr>
+        ${table.rows.map((row, rowIndex) => `
+          <tr style="background-color: ${rowIndex % 2 === 1 ? "#f8fafc" : "#ffffff"};">
             ${row.map((cell, index) => `
-              <td align="${index === 0 ? "left" : "right"}" style="padding: 8px 6px; border-bottom: 1px solid ${LINE}; font-size: 12px; color: ${INK};">
+              <td align="${index === 0 ? "left" : "right"}" style="padding: 9px 12px; border-top: 1px solid ${LINE}; font-size: 13px; color: ${index === 0 ? INK : "#334155"};">
                 ${escapeHtml(cell)}
               </td>
             `).join("")}
@@ -58,26 +89,35 @@ const tableHtml = (table: IEmailReportPayload["tables"][number]) => {
 };
 
 const reportEmailHtml = (payload: IEmailReportPayload, businessName: string) => `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 32px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #eef2f7; padding: 32px 16px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 640px; background-color: #ffffff; border: 1px solid ${LINE}; border-radius: 16px; overflow: hidden; font-family: Arial, Helvetica, sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 640px; background-color: #ffffff; border-radius: 18px; overflow: hidden; font-family: Arial, Helvetica, sans-serif; box-shadow: 0 1px 3px rgba(15,23,42,0.08);">
           <tr>
-            <td style="background-color: ${BRAND}; padding: 18px 32px;">
-              <span style="font-size: 16px; font-weight: bold; color: #ffffff;">${escapeHtml(businessName)}</span>
+            <td style="background-color: ${BRAND}; padding: 22px 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-size: 17px; font-weight: bold; color: #ffffff; letter-spacing: 0.2px;">
+                    ${escapeHtml(businessName)}
+                  </td>
+                  <td align="right" style="font-size: 11px; color: rgba(255,255,255,0.8); letter-spacing: 0.4px; text-transform: uppercase;">
+                    ${escapeHtml(PRODUCT_NAME)}
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="padding: 32px;">
-              <h1 style="margin: 0 0 4px; font-size: 20px; color: ${INK};">${escapeHtml(payload.title)}</h1>
-              <p style="margin: 0 0 24px; font-size: 13px; color: ${MUTED};">${escapeHtml(payload.period)}</p>
+            <td style="padding: 30px 32px 8px;">
+              <h1 style="margin: 0 0 6px; font-size: 22px; line-height: 1.25; color: ${INK};">${escapeHtml(payload.title)}</h1>
+              ${payload.period ? `<p style="margin: 0 0 26px; font-size: 13px; color: ${MUTED};">${escapeHtml(payload.period)}</p>` : `<div style="height: 20px;"></div>`}
               ${summaryHtml(payload.summary)}
               ${payload.tables.map(tableHtml).join("")}
             </td>
           </tr>
           <tr>
-            <td style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid ${LINE};">
-              <p style="margin: 0; font-size: 11px; color: #94a3b8; text-align: center;">
+            <td style="padding: 18px 32px 24px; background-color: #f8fafc; border-top: 1px solid ${LINE};">
+              <p style="margin: 0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.6;">
                 Sent from ${escapeHtml(PRODUCT_NAME)} - please do not reply to this email.
               </p>
             </td>
