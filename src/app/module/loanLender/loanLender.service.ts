@@ -3,13 +3,45 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
+import { lenderBalancesByKey, lenderKeyOf } from "../../shared/loanBalance.js";
 import { ICreateLoanLenderPayload, IUpdateLoanLenderPayload } from "./loanLender.validation.js";
 
+/**
+ * Every lender, with where they stand.
+ *
+ * The balance is computed here rather than stored, because a stored one goes
+ * wrong the moment a transaction is edited or deleted - and these are edited
+ * often. It is also computed HERE rather than in the browser, where three
+ * pages each had their own copy and had already drifted apart.
+ *
+ * One extra query for the whole page, not one per lender.
+ */
 const getAllLenders = async (user: IRequestUser) => {
-    return prisma.loanLender.findMany({
-        where: { owner_id: user.ownerId, deleted_at: null },
-        orderBy: { created_at: "desc" },
-    });
+    const [lenders, loans] = await Promise.all([
+        prisma.loanLender.findMany({
+            where: { owner_id: user.ownerId, deleted_at: null },
+            orderBy: { created_at: "desc" },
+        }),
+        prisma.loan.findMany({
+            where: { owner_id: user.ownerId, deleted_at: null },
+            select: {
+                lender_id: true, lender_name: true, payment_category: true,
+                received_amount: true, payment_amount: true, transaction_type: true,
+            },
+        }),
+    ]);
+
+    const byKey = lenderBalancesByKey(lenders, loans);
+
+    return lenders.map((lender) => ({
+        ...lender,
+        ...(byKey.get(lenderKeyOf(lender)) ?? {
+            current_principal: Number(lender.opening_balance ?? 0),
+            profit_received: 0, profit_paid: 0, total_profit: 0,
+            principal_received: 0, principal_paid: 0,
+            balance_type: "SETTLED" as const, transactions: 0,
+        }),
+    }));
 };
 
 const createLender = async (payload: ICreateLoanLenderPayload, user: IRequestUser) => {

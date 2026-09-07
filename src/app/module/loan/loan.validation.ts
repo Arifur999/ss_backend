@@ -1,5 +1,6 @@
 import z from "zod";
 import { LoanTransactionType, LoanType } from "../../../generated/prisma/enums.js";
+import { PRINCIPAL, PROFIT } from "../../shared/loanBalance.js";
 
 export const createLoanZodSchema = z.object({
     date: z.string("Date must be string (YYYY-MM-DD)").min(1, "Date is required"),
@@ -10,6 +11,11 @@ export const createLoanZodSchema = z.object({
     received_amount: z.number("Received amount must be a number").nonnegative().optional(),
     payment_amount: z.number("Payment amount must be a number").nonnegative().optional(),
     interest_amount: z.number("Interest amount must be a number").nonnegative().optional(),
+    // What the money in the two amount columns above WAS. A profit row still
+    // moves cash - it just does not move the principal owed. Defaults to
+    // principal on the column, so an older client that does not send it keeps
+    // behaving exactly as before.
+    payment_category: z.enum([PRINCIPAL, PROFIT], "Payment category must be principal or profit").optional(),
     account_id: z.uuid("Account id must be a valid UUID"),
     account_name: z.string("Account name must be string").min(1, "Account name is required"),
     notes: z.string("Notes must be string").optional(),

@@ -82,7 +82,22 @@ model Loan {
   transaction_type LoanTransactionType @default(receive)
   received_amount  Decimal             @default(0) @db.Decimal(15, 2)
   payment_amount   Decimal             @default(0) @db.Decimal(15, 2)
+  /// Dead. Superseded by payment_category below, which says what the money in
+  /// the two columns above WAS rather than putting interest in a third column
+  /// nothing adds up. Left in place because dropping a column is its own
+  /// decision and nothing reads this one.
   interest_amount  Decimal             @default(0) @db.Decimal(15, 2)
+  /// "principal" | "profit" - what this movement was.
+  ///
+  /// The money itself stays in received_amount / payment_amount either way,
+  /// which is what keeps the cash and bank balances right: a profit payment is
+  /// still cash leaving the drawer, and Balance.tsx folds those two columns
+  /// into every account. Only the PRINCIPAL owed is calculated differently -
+  /// a profit row moves it by nothing at all.
+  ///
+  /// Plain text rather than a Postgres enum, like recycle_bin_items.type:
+  /// extending an enum needs a hand-written ALTER TYPE with no precedent here.
+  payment_category String              @default("principal")
   account_id       String?
   account_name     String
   notes            String              @default("")

@@ -10,6 +10,8 @@ import { createLoanZodSchema, updateLoanZodSchema } from "./loan.validation.js";
 const router = Router();
 
 router.get("/", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubscription, requirePermission("View Loans"), LoanController.getAllLoans);
+// Declared before "/" so it is not read as a loan id, and gated like a read.
+router.get("/statement", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubscription, requirePermission("View Loans"), LoanController.getLenderStatement);
 router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("Manage Loans"), validateRequest(createLoanZodSchema), LoanController.createLoan);
 router.patch("/:id", checkAuth(Role.owner), checkSubscription, requirePermission("Manage Loans"), validateRequest(updateLoanZodSchema), LoanController.updateLoan);
 router.delete("/:id", checkAuth(Role.owner), checkSubscription, requirePermission("Manage Loans"), LoanController.deleteLoan);

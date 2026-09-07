@@ -16,6 +16,33 @@ const getAllLoans = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+const getLenderStatement = catchAsync(async (req: Request, res: Response) => {
+    // A malformed date is dropped rather than 400ing: an unbounded statement is
+    // a sensible answer to a broken filter, an error page is not.
+    const day = (value: unknown) => {
+        const text = String(value || "");
+        return ISO_DAY.test(text) ? text : undefined;
+    };
+
+    const result = await LoanService.getLenderStatement(
+        {
+            lenderId: String(req.query.lender_id || ""),
+            from: day(req.query.from),
+            to: day(req.query.to),
+        },
+        req.user as IRequestUser
+    );
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Statement retrieved successfully",
+        data: result,
+    });
+});
+
 const createLoan = catchAsync(async (req: Request, res: Response) => {
     const result = await LoanService.createLoan(req.body, req.user as IRequestUser);
     sendResponse(res, {
@@ -51,6 +78,7 @@ const deleteLoan = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const LoanController = {
+    getLenderStatement,
     getAllLoans,
     createLoan,
     updateLoan,
