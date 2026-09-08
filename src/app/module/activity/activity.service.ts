@@ -63,7 +63,8 @@ const getDayActivity = async (day: string, user: IRequestUser) => {
             }),
             prisma.expense.findMany({
                 where,
-                select: { created_at: true, category_name: true, notes: true, amount: true },
+                // id, so the loan rows below can disown the ones they wrote.
+                select: { id: true, created_at: true, category_name: true, notes: true, amount: true },
             }),
             prisma.customerPayment.findMany({
                 where,
@@ -78,13 +79,36 @@ const getDayActivity = async (day: string, user: IRequestUser) => {
                 select: {
                     created_at: true, lender_name: true, transaction_type: true,
                     received_amount: true, payment_amount: true,
+                    // Never shown. Used only to drop the twin from the feed.
+                    expense_id: true, other_income_id: true,
                 },
             }),
             prisma.otherIncome.findMany({
                 where,
-                select: { created_at: true, source_name: true, supplier_name: true, amount: true },
+                select: { id: true, created_at: true, source_name: true, supplier_name: true, amount: true },
             }),
         ]);
+
+    // A profit loan writes a matching expense (money out) or other income
+    // (money in) so the profit-and-loss can see it. Both rows are real and both
+    // are deliberate - but they are ONE thing that happened, and listing both
+    // would show a Tk 5,000 interest payment twice and put Tk 10,000 in the
+    // day's "out" total.
+    //
+    // The loan is the one kept: it is what the owner actually did and it names
+    // the lender. The twin is bookkeeping.
+    //
+    // No extra query is needed for the case that matters - the twin is written
+    // inside the same transaction as the loan, so both carry the same
+    // created_at and both are already in this day's window. A loan EDITED into
+    // profit on a later day leaves its twin standing alone on the day of the
+    // edit, which is correct for a feed that records actions rather than a day
+    // book.
+    const idsOf = (values: (string | null)[]) =>
+        new Set(values.filter((value): value is string => Boolean(value)));
+
+    const mirroredExpenses = idsOf(loans.map((row) => row.expense_id));
+    const mirroredIncomes = idsOf(loans.map((row) => row.other_income_id));
 
     const events: ActivityEvent[] = [
         ...sales.map((row): ActivityEvent => ({
@@ -113,7 +137,7 @@ const getDayActivity = async (day: string, user: IRequestUser) => {
             amount: 0,
             direction: "none",
         })),
-        ...expenses.map((row): ActivityEvent => ({
+        ...expenses.filter((row) => !mirroredExpenses.has(row.id)).map((row): ActivityEvent => ({
             at: row.created_at,
             kind: "Expense",
             title: row.category_name || "-",
@@ -150,7 +174,7 @@ const getDayActivity = async (day: string, user: IRequestUser) => {
                 direction: isReceive ? "in" : "out",
             };
         }),
-        ...otherIncome.map((row): ActivityEvent => ({
+        ...otherIncome.filter((row) => !mirroredIncomes.has(row.id)).map((row): ActivityEvent => ({
             at: row.created_at,
             kind: "Other income",
             title: row.source_name || row.supplier_name || "-",

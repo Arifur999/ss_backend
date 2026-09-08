@@ -10,8 +10,12 @@ export const createOtherIncomeZodSchema = z.object({
     supplier_name: z.string("Supplier name must be string").optional(),
     source_name: z.string("Source name must be string").optional(),
     amount: z.number("Amount must be a number").positive("Amount must be positive"),
-    account_id: z.uuid("Account id must be a valid UUID"),
-    account_name: z.string("Account name must be string").min(1, "Account name is required"),
+    // Optional: the other-income a loan profit RECEIPT mirrors has no cash
+    // account. The loan row already moved the money, and Balance.tsx sums other
+    // income per account_id - so a second row naming the same account would
+    // count that money twice. Regular entries still send both from the form.
+    account_id: z.uuid("Account id must be a valid UUID").nullable().optional(),
+    account_name: z.string("Account name must be string").optional().transform((value) => value ?? ""),
     notes: z.string("Notes must be string").optional(),
 }).refine(
     (data) =>
@@ -28,7 +32,9 @@ export const updateOtherIncomeZodSchema = z.object({
     supplier_name: z.string("Supplier name must be string").optional(),
     source_name: z.string("Source name must be string").optional(),
     amount: z.number("Amount must be a number").positive("Amount must be positive").optional(),
-    account_id: z.uuid("Account id must be a valid UUID").optional(),
+    // Nullable for the same reason as create: a loan-mirrored row carries no
+    // account, and re-saving one from the Other Income page must not 400.
+    account_id: z.uuid("Account id must be a valid UUID").nullable().optional(),
     account_name: z.string("Account name must be string").optional(),
     notes: z.string("Notes must be string").optional(),
 });

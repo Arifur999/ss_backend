@@ -4,6 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { consumeFifoForSaleItem } from "../inventory/fifo.helpers.js";
+import { reconcileLoanProfitMirror } from "../loan/profitMirror.helpers.js";
 
 // Whitelist of tables a recycle-bin snapshot may be restored into,
 // mapped to their Prisma delegates.
@@ -284,6 +285,39 @@ const restoreItem = async (id: string, user: IRequestUser) => {
                     });
                 }
             }
+        } else if (tableName === "loans") {
+            // A profit loan has to come back with its twin, or the P&L quietly
+            // loses the interest the ledger says was paid - and the owner is
+            // left looking at two screens that disagree with nothing to say
+            // which one is lying.
+            //
+            // The twin is REBUILT from the loan, not restored from a snapshot of
+            // its own. That is the reason expense_category_id and its name live
+            // on the loan row at all: a snapshot of the expense would carry a
+            // dead primary key and have to hope nothing had claimed it since.
+            const row = reviveRow(tableName, snapshot, user.ownerId);
+
+            // Whatever an older snapshot claims, the twin is gone - it was
+            // deleted alongside the loan. Start from nothing so the reconcile
+            // creates rather than trying to update a row that is not there.
+            row.expense_id = null;
+            row.other_income_id = null;
+
+            // The category may have been deleted while this sat in the bin: the
+            // guard on expense_categories counts live expense rows, and this
+            // loan's twin was not one of them. Fall back to the name kept beside
+            // the id - which is what the denormalised column is for - rather
+            // than failing the whole restore on a foreign key.
+            if (row.expense_category_id) {
+                const category = await tx.expenseCategory.findFirst({
+                    where: { id: row.expense_category_id, owner_id: user.ownerId },
+                    select: { id: true },
+                });
+                if (!category) row.expense_category_id = null;
+            }
+
+            const loan = await tx.loan.create({ data: row as Prisma.LoanUncheckedCreateInput });
+            await reconcileLoanProfitMirror(tx, loan, user);
         } else {
             const delegate = delegateFor(tableName);
             const row = reviveRow(tableName, snapshot, user.ownerId);

@@ -78,20 +78,20 @@ model LoanLender {
 }
 
 model Loan {
-  id               String              @id @default(uuid())
-  owner_id         String
-  date             DateTime            @default(now()) @db.Date
-  lender_id        String?
-  lender_name      String
-  loan_type        LoanType            @default(personal)
-  transaction_type LoanTransactionType @default(receive)
-  received_amount  Decimal             @default(0) @db.Decimal(15, 2)
-  payment_amount   Decimal             @default(0) @db.Decimal(15, 2)
+  id                    String              @id @default(uuid())
+  owner_id              String
+  date                  DateTime            @default(now()) @db.Date
+  lender_id             String?
+  lender_name           String
+  loan_type             LoanType            @default(personal)
+  transaction_type      LoanTransactionType @default(receive)
+  received_amount       Decimal             @default(0) @db.Decimal(15, 2)
+  payment_amount        Decimal             @default(0) @db.Decimal(15, 2)
   /// Dead. Superseded by payment_category below, which says what the money in
   /// the two columns above WAS rather than putting interest in a third column
   /// nothing adds up. Left in place because dropping a column is its own
   /// decision and nothing reads this one.
-  interest_amount  Decimal             @default(0) @db.Decimal(15, 2)
+  interest_amount       Decimal             @default(0) @db.Decimal(15, 2)
   /// "principal" | "profit" - what this movement was.
   ///
   /// The money itself stays in received_amount / payment_amount either way,
@@ -102,17 +102,43 @@ model Loan {
   ///
   /// Plain text rather than a Postgres enum, like recycle_bin_items.type:
   /// extending an enum needs a hand-written ALTER TYPE with no precedent here.
-  payment_category String              @default("principal")
-  account_id       String?
-  account_name     String
-  notes            String              @default("")
-  deleted_at       DateTime?
-  deleted_by       String?
-  created_by       String?
-  created_at       DateTime            @default(now())
+  payment_category      String              @default("principal")
+  /// Which Expenses category a profit PAYMENT is filed under, kept on the loan
+  /// rather than only on the expense it writes.
+  ///
+  /// That is what makes a loan row self-sufficient: deleting one hard-deletes
+  /// it into a recycle-bin snapshot and takes its expense with it, so restoring
+  /// has to rebuild that expense from the loan alone. The denormalised name
+  /// beside it is the house rule for every *_id, and here it also survives the
+  /// category itself being deleted.
+  expense_category_id   String?
+  expense_category_name String              @default("")
+  /// The expense this row wrote so the P&L can see the interest paid, and the
+  /// other-income it wrote for interest earned. Exactly one is ever set, and
+  /// only on a profit row.
+  ///
+  /// Server-owned: loan.validation.ts does not name them and z.object strips
+  /// what it does not name, so no client can point a loan at somebody else's
+  /// expense. reconcileLoanProfitMirror is their only writer.
+  ///
+  /// The twin carries no account_id - this row already moved the cash, and
+  /// Balance.tsx sums both tables per account_id. See the migration for what
+  /// happens if that is forgotten.
+  expense_id            String?
+  other_income_id       String?
+  account_id            String?
+  account_name          String
+  notes                 String              @default("")
+  deleted_at            DateTime?
+  deleted_by            String?
+  created_by            String?
+  created_at            DateTime            @default(now())
 
-  lender  LoanLender? @relation(fields: [lender_id], references: [id], onDelete: SetNull)
-  account Account?    @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  lender           LoanLender?      @relation(fields: [lender_id], references: [id], onDelete: SetNull)
+  account          Account?         @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  expense_category ExpenseCategory? @relation(fields: [expense_category_id], references: [id], onDelete: SetNull)
+  expense          Expense?         @relation(fields: [expense_id], references: [id], onDelete: SetNull)
+  other_income     OtherIncome?     @relation(fields: [other_income_id], references: [id], onDelete: SetNull)
 
   @@index([owner_id])
   @@index([date])
@@ -162,6 +188,9 @@ model Expense {
   category            ExpenseCategory?    @relation(fields: [category_id], references: [id], onDelete: Restrict)
   account             Account?            @relation(fields: [account_id], references: [id], onDelete: Restrict)
   salary_transactions SalaryTransaction[]
+  /// Profit payments that wrote this expense. At most one, but Prisma names a
+  /// back-relation in the plural whatever the cardinality.
+  loans               Loan[]
 
   @@index([owner_id])
   @@index([date])
@@ -188,6 +217,8 @@ model OtherIncome {
 
   supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
   account  Account?  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  /// Profit receipts that wrote this row. See Expense.loans.
+  loans    Loan[]
 
   @@index([owner_id])
   @@index([date])

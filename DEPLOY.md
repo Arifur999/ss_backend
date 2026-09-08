@@ -224,9 +224,31 @@ docker build --target build -t hatim-scripts .
 docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixOpeningStockDp.ts
 ```
 
-Take a backup first (`scripts/backup-db.sh`) for anything that writes. Both
-one-off scripts here print what they would change and are safe to run twice;
-`fixOpeningStockDp.ts` writes nothing at all until you add `--apply`.
+Take a backup first (`scripts/backup-db.sh`) for anything that writes. Every
+one-off script here prints what it would change and is safe to run twice;
+`fixOpeningStockDp.ts` and `backfillLoanProfitMirror.ts` write nothing at all
+until you add `--apply`.
+
+### `backfillLoanProfitMirror.ts` — read this before running it
+
+Loan profit rows entered before the `loan_profit_mirror` migration have no
+expense or other-income behind them, so history reads as though interest were
+free. This script writes those missing rows.
+
+**It moves the reported profit of every past month that contains a profit
+row**, by the interest in it. That is the point — but run it on a day when
+nobody is quoting last month's figure to anyone. List first, then apply:
+
+```bash
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/backfillLoanProfitMirror.ts
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/backfillLoanProfitMirror.ts --apply
+```
+
+Profit **paid** is filed under a `Loan Profit Paid` category the script creates
+once per workspace; individual rows can be re-filed afterwards from Loan
+Transactions. Profit **received** goes to Other Income under the lender's name.
+No cash balance moves either way — the mirrored rows carry no account, because
+the loan row already moved the money.
 
 ## Backups
 

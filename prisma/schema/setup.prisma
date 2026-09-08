@@ -49,16 +49,16 @@ model Account {
   sort_order      Int         @default(0)
   created_at      DateTime    @default(now())
 
-  investments        Investment[]
-  profit_withdrawals ProfitWithdrawal[]
-  loans              Loan[]
-  transfers_from     AccountTransfer[]   @relation("TransferFrom")
-  transfers_to       AccountTransfer[]   @relation("TransferTo")
-  expenses           Expense[]
-  supplier_payments  SupplierPayment[]
-  customer_payments  CustomerPayment[]
-  sale_payments      SalePayment[]
-  other_incomes      OtherIncome[]
+  investments         Investment[]
+  profit_withdrawals  ProfitWithdrawal[]
+  loans               Loan[]
+  transfers_from      AccountTransfer[]   @relation("TransferFrom")
+  transfers_to        AccountTransfer[]   @relation("TransferTo")
+  expenses            Expense[]
+  supplier_payments   SupplierPayment[]
+  customer_payments   CustomerPayment[]
+  sale_payments       SalePayment[]
+  other_incomes       OtherIncome[]
   salary_transactions SalaryTransaction[]
 
   @@index([owner_id])
@@ -66,20 +66,20 @@ model Account {
 }
 
 model Supplier {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   owner_id     String
   name         String
-  company_name String   @default("")
-  person_name  String   @default("")
-  due_type     String   @default("dena")
-  phone        String   @default("")
-  email        String   @default("")
-  address      String   @default("")
-  opening_due  Decimal  @default(0) @db.Decimal(15, 2)
-  is_active    Boolean  @default(true)
+  company_name String    @default("")
+  person_name  String    @default("")
+  due_type     String    @default("dena")
+  phone        String    @default("")
+  email        String    @default("")
+  address      String    @default("")
+  opening_due  Decimal   @default(0) @db.Decimal(15, 2)
+  is_active    Boolean   @default(true)
   deleted_at   DateTime?
   deleted_by   String?
-  created_at   DateTime @default(now())
+  created_at   DateTime  @default(now())
 
   products          Product[]
   purchases         Purchase[]
@@ -137,6 +137,11 @@ model ExpenseCategory {
 
   expenses            Expense[]
   salary_transactions SalaryTransaction[]
+  /// Loan profit payments filed under this category. Counted by
+  /// deleteCategory: a loan corrected back to principal keeps the id while its
+  /// expense is gone, so the expense count alone would let the category vanish
+  /// out from under a row that still names it.
+  loans               Loan[]
 
   @@index([owner_id])
   @@map("expense_categories")

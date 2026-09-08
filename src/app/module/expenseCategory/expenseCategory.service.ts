@@ -43,14 +43,30 @@ const deleteCategory = async (id: string, user: IRequestUser) => {
         throw new AppError(status.NOT_FOUND, "Expense category not found");
     }
 
-    const expenseCount = await prisma.expense.count({
-        where: { category_id: id, owner_id: user.ownerId },
-    });
+    const [expenseCount, loanCount] = await Promise.all([
+        prisma.expense.count({
+            where: { category_id: id, owner_id: user.ownerId },
+        }),
+        // Loan profit payments name a category too, and a row corrected back to
+        // principal keeps the name while its expense is gone - so the count
+        // above sees nothing and the category disappears out from under a loan
+        // that still refers to it.
+        prisma.loan.count({
+            where: { expense_category_id: id, owner_id: user.ownerId },
+        }),
+    ]);
 
     if (expenseCount > 0) {
         throw new AppError(
             status.CONFLICT,
             "This category has expense transactions. Delete those transactions first."
+        );
+    }
+
+    if (loanCount > 0) {
+        throw new AppError(
+            status.CONFLICT,
+            "This category is used by a loan profit payment. Change that transaction first."
         );
     }
 

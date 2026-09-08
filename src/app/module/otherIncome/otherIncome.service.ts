@@ -34,6 +34,27 @@ const createOtherIncome = async (payload: ICreateOtherIncomePayload, user: IRequ
     });
 };
 
+/**
+ * Refuse to touch an other-income row the loan ledger owns.
+ *
+ * The mirror image of assertNotLoanOwned in expense.service.ts: a loan profit
+ * RECEIPT writes this row so the profit-and-loss can see the interest earned,
+ * and Loan Transactions is where it is edited. Deleting it here would drop the
+ * income while the loan still says it came in.
+ */
+const assertNotLoanOwned = async (incomeId: string, ownerId: string) => {
+    const owned = await prisma.loan.count({
+        where: { other_income_id: incomeId, owner_id: ownerId },
+    });
+
+    if (owned > 0) {
+        throw new AppError(
+            status.CONFLICT,
+            "This income comes from a loan profit receipt. Edit or delete it from Loan Transactions."
+        );
+    }
+};
+
 const updateOtherIncome = async (id: string, payload: IUpdateOtherIncomePayload, user: IRequestUser) => {
     const existing = await prisma.otherIncome.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -42,6 +63,8 @@ const updateOtherIncome = async (id: string, payload: IUpdateOtherIncomePayload,
     if (!existing) {
         throw new AppError(status.NOT_FOUND, "Other income record not found");
     }
+
+    await assertNotLoanOwned(id, user.ownerId);
 
     return prisma.otherIncome.update({
         where: { id },
@@ -60,6 +83,8 @@ const deleteOtherIncome = async (id: string, user: IRequestUser, recycleMeta?: I
     if (!existing) {
         throw new AppError(status.NOT_FOUND, "Other income record not found");
     }
+
+    await assertNotLoanOwned(id, user.ownerId);
 
     await prisma.$transaction(async (tx) => {
         await tx.recycleBinItem.create({

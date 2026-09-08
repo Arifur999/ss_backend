@@ -34,6 +34,30 @@ const createExpense = async (payload: ICreateExpensePayload, user: IRequestUser)
     });
 };
 
+/**
+ * Refuse to touch an expense the loan ledger owns.
+ *
+ * A loan profit payment writes this row so the profit-and-loss can see the
+ * interest; Loan Transactions is where it is edited. Changing it here would put
+ * the two out of step with nothing to say which was right, and deleting it here
+ * would take the cost out of the P&L while the loan still says it was paid.
+ *
+ * Same shape as the 409 on expenseCategory.deleteCategory: refuse, and say
+ * where to go instead.
+ */
+const assertNotLoanOwned = async (expenseId: string, ownerId: string) => {
+    const owned = await prisma.loan.count({
+        where: { expense_id: expenseId, owner_id: ownerId },
+    });
+
+    if (owned > 0) {
+        throw new AppError(
+            status.CONFLICT,
+            "This expense comes from a loan profit payment. Edit or delete it from Loan Transactions."
+        );
+    }
+};
+
 const updateExpense = async (id: string, payload: IUpdateExpensePayload, user: IRequestUser) => {
     const existing = await prisma.expense.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -42,6 +66,8 @@ const updateExpense = async (id: string, payload: IUpdateExpensePayload, user: I
     if (!existing) {
         throw new AppError(status.NOT_FOUND, "Expense not found");
     }
+
+    await assertNotLoanOwned(id, user.ownerId);
 
     return prisma.expense.update({
         where: { id },
@@ -60,6 +86,8 @@ const deleteExpense = async (id: string, user: IRequestUser, recycleMeta?: IRecy
     if (!existing) {
         throw new AppError(status.NOT_FOUND, "Expense not found");
     }
+
+    await assertNotLoanOwned(id, user.ownerId);
 
     await prisma.$transaction(async (tx) => {
         // Salary transactions may reference this expense; detach them first.

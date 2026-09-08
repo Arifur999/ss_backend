@@ -6,8 +6,33 @@ import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { lenderKeyOf, runningStatement } from "../../shared/loanBalance.js";
+import { needsExpenseCategory } from "../../shared/loanProfitMirror.js";
 import { roundTaka } from "../../shared/money.js";
 import { ICreateLoanPayload, IUpdateLoanPayload } from "./loan.validation.js";
+import { reconcileLoanProfitMirror } from "./profitMirror.helpers.js";
+
+/**
+ * The rule createLoanZodSchema's .refine enforces, applied where a PATCH can be
+ * judged by it too.
+ *
+ * A PATCH may carry nothing but `notes`, so the schema cannot see what the row
+ * will BE - only the payload merged over the existing row can, and that merge
+ * exists only here.
+ */
+const assertProfitHasCategory = (merged: {
+    payment_category?: string | null;
+    transaction_type?: string | null;
+    received_amount?: unknown;
+    payment_amount?: unknown;
+    expense_category_id?: string | null;
+}) => {
+    if (needsExpenseCategory(merged) && !merged.expense_category_id) {
+        throw new AppError(
+            status.BAD_REQUEST,
+            "Choose an expense category - profit paid is recorded as an expense"
+        );
+    }
+};
 
 const getAllLoans = async (user: IRequestUser, options: ListOptions = {}) => {
     return prisma.loan.findMany({
@@ -88,15 +113,26 @@ const createLoan = async (payload: ICreateLoanPayload, user: IRequestUser) => {
     await assertOwnedReferences(payload, user.ownerId, {
         account_id: "account",
         lender_id: "loanLender",
+        expense_category_id: "expenseCategory",
     });
 
-    return prisma.loan.create({
-        data: {
-            ...payload,
-            date: new Date(payload.date),
-            owner_id: user.ownerId,
-            created_by: user.userId,
-        },
+    return prisma.$transaction(async (tx) => {
+        const loan = await tx.loan.create({
+            data: {
+                ...payload,
+                date: new Date(payload.date),
+                owner_id: user.ownerId,
+                created_by: user.userId,
+            },
+        });
+
+        // In the same transaction as the loan, on purpose. Both frontend
+        // precedents for a derived money row do it over separate HTTP calls -
+        // CustomerDueReceived writes an expense nothing ever deletes,
+        // EmployeeTransactions needs three round trips - and either one leaves
+        // an orphan the moment a request fails halfway.
+        const links = await reconcileLoanProfitMirror(tx, loan, user);
+        return { ...loan, ...links };
     });
 };
 
@@ -115,14 +151,25 @@ const updateLoan = async (id: string, payload: IUpdateLoanPayload, user: IReques
     await assertOwnedReferences(payload, user.ownerId, {
         account_id: "account",
         lender_id: "loanLender",
+        expense_category_id: "expenseCategory",
     });
 
-    return prisma.loan.update({
-        where: { id },
-        data: {
-            ...payload,
-            date: payload.date ? new Date(payload.date) : undefined,
-        },
+    // Judged on what the row will be, not on what was sent.
+    assertProfitHasCategory({ ...existing, ...payload });
+
+    return prisma.$transaction(async (tx) => {
+        const loan = await tx.loan.update({
+            where: { id },
+            data: {
+                ...payload,
+                date: payload.date ? new Date(payload.date) : undefined,
+            },
+        });
+
+        // `loan` is the row as it now stands, links included, so the reconcile
+        // judges and repairs off the same object.
+        const links = await reconcileLoanProfitMirror(tx, loan, user);
+        return { ...loan, ...links };
     });
 };
 
@@ -140,13 +187,33 @@ const deleteLoan = async (id: string, user: IRequestUser, recycleMeta?: IRecycle
             data: buildRecycleItemData({
                 user,
                 tableName: "loans",
-                row: existing,
+                // The two twin ids are stripped from the snapshot on purpose.
+                //
+                // They point at rows deleted three lines below. Restoring the
+                // snapshot as written would recreate the loan holding a foreign
+                // key to a row that no longer exists, and Postgres would refuse
+                // the whole restore - not just the link. The category and the
+                // amounts stay, which is what lets restoreItem REBUILD the twin
+                // rather than try to resurrect it.
+                row: { ...existing, expense_id: null, other_income_id: null },
                 meta: recycleMeta,
                 fallbackType: "loanManagement",
                 fallbackTitle: existing.lender_name,
                 fallbackAmount: existing.received_amount,
             }),
         });
+
+        // The twin goes with it, silently and with no bin entry of its own.
+        // Leaving it would keep a cost in the P&L for a payment the ledger no
+        // longer says happened; binning it separately would let it be restored
+        // alone, which is the same disagreement upside down.
+        if (existing.expense_id) {
+            await tx.expense.deleteMany({ where: { id: existing.expense_id, owner_id: user.ownerId } });
+        }
+        if (existing.other_income_id) {
+            await tx.otherIncome.deleteMany({ where: { id: existing.other_income_id, owner_id: user.ownerId } });
+        }
+
         await tx.loan.delete({ where: { id } });
     });
 
