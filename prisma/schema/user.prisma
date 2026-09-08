@@ -2,20 +2,20 @@
 // Field names stay snake_case so API responses match what the frontend expects.
 
 model User {
-  id         String    @id @default(uuid())
-  email      String    @unique
-  password   String
-  full_name  String    @default("")
-  role       Role      @default(owner)
-  phone      String    @default("")
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password       String
+  full_name      String    @default("")
+  role           Role      @default(owner)
+  phone          String    @default("")
   // Cloudinary URL from POST /uploads/image. Empty means "show initials".
-  avatar_url String    @default("")
-  branch_id  String?
-  is_active  Boolean   @default(true)
+  avatar_url     String    @default("")
+  branch_id      String?
+  is_active      Boolean   @default(true)
   // SaaS email verification: a user cannot use the app until they confirm
   // the 6-digit OTP sent to their email at registration (or at login if
   // they never verified). Team users created by an owner are auto-verified.
-  email_verified Boolean @default(false)
+  email_verified Boolean   @default(false)
   // Bumped whenever every existing session for this user must stop working -
   // today that means a password change, whether the user reset it themselves or
   // an owner set a new one for their staff. The number is stamped into each
@@ -26,19 +26,19 @@ model User {
   // Starts at 0, and a token with no version claim is read as 0, so tokens
   // issued before this column existed keep working - nobody is signed out by
   // the upgrade itself.
-  token_version Int @default(0)
+  token_version  Int       @default(0)
   // What this user may do WITHIN their role - see shared/permissions.ts.
   //
   // Empty means "everything the role allows", which is what makes this safe to
   // add to a live system: every existing team member has an empty array on the
   // morning of the upgrade and nobody loses access. Restrictions only start
   // applying to a user once somebody ticks boxes for them.
-  permissions String[] @default([])
+  permissions    String[]  @default([])
   // For owners: owner_id = own id. For team members: points to their owner.
-  owner_id    String?
-  last_active DateTime?
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
+  owner_id       String?
+  last_active    DateTime?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
 
   owner        User?  @relation("OwnerTeam", fields: [owner_id], references: [id], onDelete: Cascade)
   team_members User[] @relation("OwnerTeam")
@@ -46,11 +46,11 @@ model User {
   subscription          OwnerSubscription?
   subscription_payments SubscriptionPayment[]
 
-  sms_wallet          SmsWallet?
-  sms_purchases       SmsPurchase[]
-  sms_messages        SmsMessage[]
-  marketing_contacts  MarketingContact[]
-  support_tickets     SupportTicket[]
+  sms_wallet         SmsWallet?
+  sms_purchases      SmsPurchase[]
+  sms_messages       SmsMessage[]
+  marketing_contacts MarketingContact[]
+  support_tickets    SupportTicket[]
 
   @@index([owner_id])
   @@map("users")
@@ -124,19 +124,19 @@ model SubscriptionPayment {
 // can edit about payment collection: where customers should send the manual
 // bKash payment, and the wording of expiry-reminder emails.
 model PlatformSetting {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
 
   // Manual bKash payment details shown on the checkout page.
-  bkash_number String  @default("")
-  bkash_qr_url String  @default("")
-  yearly_price Decimal @default(5780) @db.Decimal(15, 2)
+  bkash_number          String  @default("")
+  bkash_qr_url          String  @default("")
+  yearly_price          Decimal @default(5780) @db.Decimal(15, 2)
   // Struck-through "regular price" shown next to yearly_price on the plans
   // page so the discount is visible (e.g. ~7188 crossed out -> 5780). Purely
   // a marketing display value - never charged, never used in payment math.
   yearly_original_price Decimal @default(7188) @db.Decimal(15, 2)
   // Monthly plan price (no yearly discount). Charged when an owner picks the
   // monthly plan from the Current Plan / choose-plan cards.
-  monthly_price Decimal @default(599) @db.Decimal(15, 2)
+  monthly_price         Decimal @default(599) @db.Decimal(15, 2)
 
   // Hotline shown to an owner while their manual payment awaits approval, so
   // they know who to call if activation is taking too long. Editable by the
@@ -224,21 +224,21 @@ model RecycleBinItem {
 // than a Postgres enum - an enum here would buy nothing and cost a migration
 // every time a third kind of draft turns up.
 model Draft {
-  id         String   @id @default(uuid())
-  owner_id   String
+  id              String   @id @default(uuid())
+  owner_id        String
   /// "purchase_order" | "sale"
-  kind       String
-  title      String   @default("")
-  subtitle   String   @default("")
-  amount     Decimal  @default(0) @db.Decimal(15, 2)
-  data       Json?
+  kind            String
+  title           String   @default("")
+  subtitle        String   @default("")
+  amount          Decimal  @default(0) @db.Decimal(15, 2)
+  data            Json?
   /// The shape of `data`. A page refuses a draft stamped with a version it no
   /// longer understands, rather than hydrating a form half-way.
-  payload_version Int   @default(1)
-  created_by String?
-  updated_by String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  payload_version Int      @default(1)
+  created_by      String?
+  updated_by      String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   @@index([owner_id, kind])
   @@map("drafts")

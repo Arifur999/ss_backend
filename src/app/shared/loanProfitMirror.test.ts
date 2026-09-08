@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
     EXPENSE, OTHER_INCOME, mirrorAmountOf, mirrorKindOf,
-    needsExpenseCategory, planLoanMirror,
+    needsExpenseCategory, needsIncomeSource, planLoanMirror,
 } from "./loanProfitMirror.js";
 
 // The rule the whole feature turns on: one twin, or none, and NEVER two.
@@ -176,5 +176,20 @@ describe("needsExpenseCategory", () => {
 
     it("is false for a profit row of Tk 0, which writes no expense to categorise", () => {
         assert.equal(needsExpenseCategory({ payment_category: "profit", received_amount: 0, payment_amount: 0 }), false);
+    });
+});
+
+describe("needsIncomeSource", () => {
+    it("is true only for profit that was RECEIVED", () => {
+        assert.equal(needsIncomeSource(receive(5_000)), true);
+        assert.equal(needsIncomeSource(pay(5_000)), false);
+        assert.equal(needsIncomeSource(receive(5_000, "principal")), false);
+        assert.equal(needsIncomeSource(pay(5_000, "principal")), false);
+    });
+
+    it("never agrees with needsExpenseCategory - a row has one side or neither", () => {
+        for (const row of [receive(5_000), pay(5_000), receive(5_000, "principal"), pay(4_000, "principal")]) {
+            assert.equal(needsIncomeSource(row) && needsExpenseCategory(row), false);
+        }
     });
 });

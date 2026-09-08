@@ -114,3 +114,14 @@ export const planLoanMirror = (loan: LoanRow, links: MirrorLinks): MirrorPlan =>
  */
 export const needsExpenseCategory = (loan: LoanRow): boolean =>
     mirrorKindOf(loan) === EXPENSE;
+
+/**
+ * True when this row is the kind that carries an income source.
+ *
+ * The receiving side's counterpart. Unlike the category it is never required -
+ * an empty source falls back to the lender's name, which is what every row
+ * written before the field existed does - but it decides whether the form asks
+ * for one at all.
+ */
+export const needsIncomeSource = (loan: LoanRow): boolean =>
+    mirrorKindOf(loan) === OTHER_INCOME;

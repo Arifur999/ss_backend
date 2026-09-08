@@ -27,6 +27,10 @@ const loanShape = z.object({
     // leave a stale category sitting on the row.
     expense_category_id: z.uuid("Expense category id must be a valid UUID").nullable().optional(),
     expense_category_name: z.string("Expense category name must be string").optional().transform((value) => value ?? ""),
+    // The receiving side's answer to the category above: Other Income has no
+    // categories, so a source name is the only label it carries. Empty falls
+    // back to the lender's name.
+    income_source_name: z.string("Income source must be string").optional().transform((value) => value ?? ""),
     account_id: z.uuid("Account id must be a valid UUID"),
     account_name: z.string("Account name must be string").min(1, "Account name is required"),
     notes: z.string("Notes must be string").optional(),

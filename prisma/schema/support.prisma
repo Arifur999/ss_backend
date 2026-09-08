@@ -6,17 +6,17 @@
 // said. A ticket carries its owner, its history, and whether it is still
 // waiting on anyone.
 model SupportTicket {
-  id       String @id @default(uuid())
+  id        String              @id @default(uuid())
   // The workspace that opened it. Team members open tickets against their
   // owner's workspace, so the whole workspace sees one thread.
-  owner_id String
+  owner_id  String
   // The individual who opened it - a workspace can have several people.
   opened_by String
   subject   String
   status    SupportTicketStatus @default(open)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
   // Sorted on, so an inbox can put the longest-waiting ticket first without
   // reading every message row.
   last_message_at DateTime @default(now())
@@ -35,9 +35,9 @@ model SupportTicket {
 }
 
 model SupportTicketMessage {
-  id        String @id @default(uuid())
-  ticket_id String
-  body      String @db.Text
+  id          String  @id @default(uuid())
+  ticket_id   String
+  body        String  @db.Text
   // Which side wrote it. Stored rather than derived from author_id, so a
   // deleted staff account cannot turn a platform reply into a customer's.
   from_admin  Boolean @default(false)

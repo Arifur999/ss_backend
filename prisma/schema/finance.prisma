@@ -113,6 +113,13 @@ model Loan {
   /// category itself being deleted.
   expense_category_id   String?
   expense_category_name String              @default("")
+  /// Where a profit RECEIPT is filed in Other Income.
+  ///
+  /// Other Income has no category table - a source name is its whole
+  /// classification - so this is the receiving side's answer to
+  /// expense_category_name above. Empty means "use the lender's name", which
+  /// is what every row written before this column existed does.
+  income_source_name    String              @default("")
   /// The expense this row wrote so the P&L can see the interest paid, and the
   /// other-income it wrote for interest earned. Exactly one is ever set, and
   /// only on a profit row.

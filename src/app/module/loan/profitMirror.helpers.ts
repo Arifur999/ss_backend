@@ -20,6 +20,7 @@ export type LoanMirrorSource = LoanRow & MirrorLinks & {
     notes: string;
     expense_category_id: string | null;
     expense_category_name: string;
+    income_source_name: string;
 };
 
 // Only reachable by a row that predates the category picker - one restored from
@@ -130,7 +131,11 @@ export const reconcileLoanProfitMirror = async (
             income_type: IncomeType.other,
             supplier_id: null,
             supplier_name: "",
-            source_name: loan.lender_name || "Unknown",
+            // What the owner wrote when entering the transaction, falling back
+            // to the lender's name. The name alone says who paid but not what
+            // for, and this row is read months later on a report with no way
+            // back to the loan behind it.
+            source_name: loan.income_source_name?.trim() || loan.lender_name || "Unknown",
             amount: plan.amount,
             account_id: null,
             account_name: "",
