@@ -32,7 +32,10 @@ const toSupabaseShape = (row: any) => {
 //   sales     = sum of sale_items.qty
 //   opening   = GREATEST(products.opening_qty, opening-stock batch qty)
 //   available = opening + received + upcoming - sales
-//   dp        = inventory.dp_price, else products.cost_price, else 0
+//   dp        = the weighted average of the FIFO layers still holding stock;
+//               failing that inventory.dp_price, then the product's DP AFTER
+//               its dp_discount - never the list rate, which is not what the
+//               goods cost
 //   value     = available * dp
 //
 // One thing deliberately NOT carried over: the old code also looked for
@@ -50,6 +53,7 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 p.product_code      AS product_code,
                 p.image_url         AS image_url,
                 p.cost_price        AS cost_price,
+                p.dp_discount       AS dp_discount,
                 p.opening_qty       AS product_opening_qty,
                 s.name              AS supplier_name,
                 s.company_name      AS supplier_company,
@@ -187,9 +191,17 @@ const inventoryRowsSql = (user: IRequestUser, search: string | undefined, status
                 -- FIFO layers still holding stock. Falls back to the manual DP
                 -- override, then the product's cost price, for a product with no
                 -- layers left (all sold, or never batched).
+                -- The fallback applies the DP discount, the same way
+                -- shared/money.ts actualDp does. It used to fall back to
+                -- cost_price whole, so a product listed at Tk 19,300 -10%
+                -- valued its stock at 19,300 when the real cost was 17,370.
                 CASE WHEN on_hand_qty > 0
                      THEN on_hand_cost / on_hand_qty
-                     ELSE COALESCE(dp_price, cost_price, 0)
+                     ELSE COALESCE(
+                         dp_price,
+                         ROUND(ROUND(cost_price) - (ROUND(cost_price) * COALESCE(dp_discount, 0) / 100)),
+                         0
+                     )
                 END AS unit_dp
             FROM base
         )
