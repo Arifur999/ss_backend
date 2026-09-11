@@ -221,13 +221,42 @@ git pull
 NET=$(docker inspect -f '{{range $k, $_ := .NetworkSettings.Networks}}{{$k}}{{end}}' "$(docker compose ps -q backend)")
 
 docker build --target build -t hatim-scripts .
-docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixOpeningStockDp.ts
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixBatchCosts.ts
 ```
 
 Take a backup first (`scripts/backup-db.sh`) for anything that writes. Every
 one-off script here prints what it would change and is safe to run twice;
-`fixOpeningStockDp.ts` and `backfillLoanProfitMirror.ts` write nothing at all
+`fixBatchCosts.ts` and `backfillLoanProfitMirror.ts` write nothing at all
 until you add `--apply`.
+
+### `fixBatchCosts.ts` — the stock that was costed at the list price
+
+A product stores its list DP and the discount negotiated on it separately, so a
+price list can print "Tk 11,400 -10%". Two paths used to write the **list**
+figure into the FIFO batch every sale is costed against — opening stock
+ignoring `dp_discount`, and a purchase receive whose `actual_dp` was left at its
+0 default ignoring `discount_pct`. Both are fixed at the point of writing now;
+this repairs what is already on the books.
+
+The symptom is one product reading at different rates from one invoice to the
+next, and profit reported lower than it was. Run the dry run — it writes
+nothing and prints every batch, layer and sale line it would change, plus how
+much reported profit will rise:
+
+```bash
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixBatchCosts.ts
+docker run --rm --network "$NET" --env-file .env hatim-scripts npx tsx scripts/fixBatchCosts.ts --apply
+```
+
+It only touches what goods **cost** — never a quantity, a stock level, a cash
+figure or an account balance. Reported profit rises across the months holding
+the affected sales, and stock value on the Inventory page falls; both were
+overstated. A batch genuinely received at a different price from the current
+list is left alone, so it is safe to run twice.
+
+If it prints nothing, the data is already right and any difference between two
+sales of one product is FIFO working as it should: stock leaves oldest batch
+first, so batches bought at different prices cost different amounts.
 
 ### `backfillLoanProfitMirror.ts` — read this before running it
 

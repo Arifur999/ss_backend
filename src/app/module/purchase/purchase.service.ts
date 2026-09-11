@@ -8,6 +8,7 @@ import { assertOwnedReferences } from "../../shared/assertOwnership.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { createReceiveStockBatch } from "../inventory/fifo.helpers.js";
+import { purchaseReceiveCost } from "../../shared/batchCost.js";
 import { ICreatePurchasePayload, IReceivePurchaseItemPayload, IUpdatePurchasePayload, IAddPurchaseItemPayload } from "./purchase.validation.js";
 
 // Supabase nested selects returned relations under their table names:
@@ -155,6 +156,11 @@ type ReceivableItem = {
     received_qty: number;
     actual_dp: Prisma.Decimal | number;
     dp_price: Prisma.Decimal | number;
+    // Named here because purchaseReceiveCost needs it whenever actual_dp was
+    // left at its 0 default. Both callers load the whole row, so it arrives
+    // either way - but a type that omitted it let the batch fall back to the
+    // list price with nothing to flag it, which is the bug this replaced.
+    discount_pct: Prisma.Decimal | number;
     product?: { selling_price: Prisma.Decimal | number } | null;
 };
 
@@ -222,7 +228,13 @@ const receiveItemInTx = async (
             purchaseItemId: item.id,
             purchaseReceiveId: receiveRow.id,
             qty: payload.received_qty,
-            dpPrice: Number(item.actual_dp) || Number(item.dp_price) || 0,
+            // Not `actual_dp || dp_price`. actual_dp is optional in the Zod
+            // schema and defaults to 0, so an item saved without it fell back
+            // to the LIST price - and every sale costed against this batch then
+            // reported goods bought at Tk 10,260 as costing Tk 11,400, which is
+            // the same mistake opening stock used to make. purchaseReceiveCost
+            // derives the figure from dp_price and discount_pct instead.
+            dpPrice: purchaseReceiveCost(item),
             mrpPrice: Number(item.product?.selling_price ?? 0),
             receiveDate: new Date(payload.receive_date),
         },
