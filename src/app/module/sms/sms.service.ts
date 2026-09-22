@@ -156,6 +156,12 @@ const sendSms = async (payload: ISendSmsPayload, user: IRequestUser) => {
         // Nothing was sent, so put the reserved credits back and log the attempt
         // as costing nothing. One transaction: a refund without its log entry
         // would leave the balance unexplained.
+        //
+        // The log keeps the gateway's RAW body first and our reading of it
+        // second. It used to keep only the reading, so when a long-working
+        // account started answering 1007 there was no way to tell a genuinely
+        // empty gateway from a reply we had misread - the evidence was
+        // discarded at the moment it mattered.
         await prisma.$transaction([
             prisma.smsWallet.update({
                 where: { owner_id: user.ownerId },
@@ -171,7 +177,7 @@ const sendSms = async (payload: ISendSmsPayload, user: IRequestUser) => {
                     is_unicode: unicode,
                     status: "failed",
                     shoot_id: "",
-                    response: result.error || result.raw || "Failed",
+                    response: [result.raw, result.error].filter(Boolean).join(" | ") || "Failed",
                 },
             }),
         ]);

@@ -1,26 +1,12 @@
 import { env } from "../../config/env.js";
+import { classifyMramReply } from "../shared/mramReply.js";
 
 // MRAM SMS gateway helpers (msg.mram.com.bd). All calls use the master API key
 // from the server env - it is never exposed to the frontend.
-
-const ERROR_CODES: Record<string, string> = {
-    "1002": "Sender ID / masking not found",
-    "1003": "API not found",
-    "1004": "SPAM detected",
-    "1005": "Gateway internal error",
-    "1006": "Gateway internal error",
-    "1007": "Gateway balance insufficient",
-    "1008": "Message is empty",
-    "1009": "Message type not set",
-    "1010": "Invalid user & password",
-    "1011": "Invalid user id",
-    "1012": "Invalid number",
-    "1013": "API limit reached",
-    "1014": "No matching template",
-    "1015": "SMS content validation failed",
-    "1016": "IP address not allowed",
-    "1019": "SMS purpose missing",
-};
+//
+// Reading the reply is in shared/mramReply.ts, where it can be tested: this
+// file imports config/env.ts for the API key, and a test that pulls in env
+// fails in CI where there is no .env.
 
 // Bangla (or any non-ASCII) content must go out as "unicode". Any char code
 // above 127 means the message is outside the plain-GSM/ASCII set.
@@ -55,6 +41,14 @@ export interface MramSendResult {
     success: boolean;
     error: string;
     shootId: string;
+    /**
+     * Exactly what the gateway said, kept whatever the outcome.
+     *
+     * The caller writes this to sms_messages.response. It used to store the
+     * error message we had DERIVED from the body instead, which meant the one
+     * piece of evidence - the gateway's own words - was thrown away at the
+     * moment it started being needed.
+     */
     raw: string;
 }
 
@@ -80,17 +74,8 @@ export const sendSms = async (
     try {
         const res = await fetch(`${env.MRAM.BASE_URL}/smsapi?${params.toString()}`, { method: "GET" });
         const raw = (await res.text()).trim();
-
-        // On failure MRAM returns one of the numeric error codes (as the body).
-        const codeMatch = raw.match(/\b(10[0-1][0-9])\b/);
-        if (codeMatch && ERROR_CODES[codeMatch[1]]) {
-            return { success: false, error: ERROR_CODES[codeMatch[1]], shootId: "", raw };
-        }
-        if (!res.ok) {
-            return { success: false, error: `Gateway responded ${res.status}`, shootId: "", raw };
-        }
-        // Anything else is treated as success; the body is the SMS Shoot ID.
-        return { success: true, error: "", shootId: raw, raw };
+        const verdict = classifyMramReply({ raw, ok: res.ok, status: res.status });
+        return { success: verdict.success, error: verdict.error, shootId: verdict.shootId, raw };
     } catch (err) {
         const reason = err instanceof Error ? err.message : "";
         return { success: false, error: reason || "Could not reach the SMS gateway", shootId: "", raw: "" };
