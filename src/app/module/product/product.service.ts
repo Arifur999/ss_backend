@@ -4,6 +4,7 @@ import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { assertOwnedRecord } from "../../shared/assertOwnership.js";
+import { openingBatchRepriceTo } from "../../shared/batchCost.js";
 import { escapeLikeTerm, pageSlice, type ListOptions } from "../../shared/listQuery.js";
 import { actualDp } from "../../shared/money.js";
 import { IBulkUpdatePricesPayload, ICreateProductPayload, IUpdateProductPayload } from "./product.validation.js";
@@ -400,6 +401,28 @@ const updateProduct = async (id: string, payload: IUpdateProductPayload, user: I
             await tx.saleItem.updateMany({
                 where: { owner_id: user.ownerId, product_id: id, cost_price: 0 },
                 data: { cost_price: newCost },
+            });
+        }
+
+        // The opening-stock batch follows the product's cost basis.
+        //
+        // It was priced once, at creation, and nothing looked at it again - so
+        // a product entered at its list DP and given its discount afterwards
+        // kept a batch holding the list rate. FIFO costs every sale against
+        // that batch, which is why a product showing Final DP Tk 17,370 went
+        // on reporting a purchase amount of Tk 19,300 on each sale until the
+        // opening stock ran out. Only opening stock is repriced: a
+        // purchase-receive batch records what one consignment actually cost.
+        //
+        // This corrects future sales. Sales already costed keep their layers,
+        // because rewriting those restates profit for months that have been
+        // reported - scripts/fixBatchCosts.ts does that deliberately, with a
+        // dry run that prints the impact first.
+        const repriceOpeningTo = openingBatchRepriceTo(existing, updated);
+        if (repriceOpeningTo !== null) {
+            await tx.inventoryBatch.updateMany({
+                where: { owner_id: user.ownerId, product_id: id, source_type: "opening_stock" },
+                data: { dp_price: repriceOpeningTo },
             });
         }
 

@@ -75,3 +75,34 @@ export const verdictFor = (input: {
 
     return { reprice: true, from: current, to: correct };
 };
+
+/**
+ * The new price for a product's opening-stock batch, or null to leave it.
+ *
+ * Opening stock is priced once, when the product is created, and nothing ever
+ * looked at it again - so a product entered at its list DP and given its 10%
+ * discount afterwards kept a batch holding the list rate for good. FIFO costs
+ * every sale against that batch, so the Sales Ledger went on reporting a
+ * purchase amount of Tk 19,300 against a Final DP of Tk 17,370, for as long as
+ * the opening stock lasted.
+ *
+ * Only opening stock follows the product this way. A purchase-receive batch
+ * holds what one consignment actually cost, and editing the product's rate
+ * today must not rewrite what was paid for goods received last March.
+ *
+ * Unlike verdictFor there is no "is it still at the list rate" guard here. That
+ * guard protects a blind bulk pass over rows nobody is looking at; this runs
+ * because the owner has just edited the cost themselves, and a correction that
+ * raises the price is as legitimate as one that lowers it.
+ */
+export const openingBatchRepriceTo = (
+    before: { cost_price?: unknown; dp_discount?: unknown },
+    after: { cost_price?: unknown; dp_discount?: unknown }
+): number | null => {
+    const next = openingStockCost(after);
+    // A product with no rate yet costs nothing to sell, which is the existing
+    // "sell before the rate is known" behaviour - not a batch worth pricing.
+    if (next <= 0) return null;
+    if (next === openingStockCost(before)) return null;
+    return next;
+};

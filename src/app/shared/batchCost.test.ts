@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { openingStockCost, purchaseReceiveCost, verdictFor } from "./batchCost.js";
+import { openingBatchRepriceTo, openingStockCost, purchaseReceiveCost, verdictFor } from "./batchCost.js";
 
 // This decides what a one-shot repair script writes into a live database, so
 // the cases that must NOT be touched matter more than the ones that must. A
@@ -83,5 +83,66 @@ describe("verdictFor", () => {
         for (const correct of [11_400, 12_000, 99_999]) {
             assert.equal(verdictFor({ current: 11_400, listPrice: 11_400, correct }).reprice, false);
         }
+    });
+});
+
+describe("openingBatchRepriceTo", () => {
+    it("follows a discount added after the product was created", () => {
+        // The reported case: entered at 19,300 with no discount, given 10%
+        // later. The batch kept 19,300 and every sale was costed at it.
+        assert.equal(
+            openingBatchRepriceTo(
+                { cost_price: 19_300, dp_discount: 0 },
+                { cost_price: 19_300, dp_discount: 10 }
+            ),
+            17_370
+        );
+    });
+
+    it("follows a changed rate", () => {
+        assert.equal(
+            openingBatchRepriceTo(
+                { cost_price: 15_500, dp_discount: 10 },
+                { cost_price: 19_300, dp_discount: 10 }
+            ),
+            17_370
+        );
+    });
+
+    it("raises as readily as it lowers - the owner is correcting the cost", () => {
+        assert.equal(
+            openingBatchRepriceTo(
+                { cost_price: 10_000, dp_discount: 0 },
+                { cost_price: 12_000, dp_discount: 0 }
+            ),
+            12_000
+        );
+    });
+
+    it("leaves the batch alone when the cost is unchanged", () => {
+        assert.equal(
+            openingBatchRepriceTo(
+                { cost_price: 19_300, dp_discount: 10 },
+                { cost_price: 19_300, dp_discount: 10 }
+            ),
+            null
+        );
+    });
+
+    it("leaves it alone when a rename moves neither field", () => {
+        assert.equal(openingBatchRepriceTo({ cost_price: 8_700 }, { cost_price: 8_700 }), null);
+    });
+
+    it("does not price a batch for a product with no rate yet", () => {
+        assert.equal(openingBatchRepriceTo({ cost_price: 5_000 }, { cost_price: 0 }), null);
+    });
+
+    it("rounds to the taka, so a discount landing on paisa does not drift", () => {
+        // 8,700 less 7.5% is 8,047.5, and every other figure in the app is
+        // whole taka.
+        assert.equal(
+            openingBatchRepriceTo({ cost_price: 8_700, dp_discount: 0 }, { cost_price: 8_700, dp_discount: 7.5 }),
+            8_048
+        );
     });
 });
