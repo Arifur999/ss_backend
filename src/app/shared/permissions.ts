@@ -40,6 +40,13 @@ export const PERMISSIONS = [
     "Delete Purchase",
     "Receive Stock",
 
+    // Damage
+    "View Damage",
+    "Add Damage",
+    "Edit Damage",
+    "Delete Damage",
+    "Receive Damage",
+
     // Sales
     "View Sales",
     "New Sale",
