@@ -3,7 +3,7 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
-import { consumeFifoForSaleItem } from "../inventory/fifo.helpers.js";
+import { adjustInventoryLevel, consumeFifoForSaleItem, drawStockFifo } from "../inventory/fifo.helpers.js";
 import { reconcileLoanProfitMirror } from "../loan/profitMirror.helpers.js";
 
 // Whitelist of tables a recycle-bin snapshot may be restored into,
@@ -30,6 +30,7 @@ const RESTORABLE_TABLES = [
     "accounts",
     "shareholders",
     "attendance",
+    "damage_entries",
 ] as const;
 
 type RestorableTable = (typeof RESTORABLE_TABLES)[number];
@@ -55,6 +56,7 @@ const delegateFor = (tableName: RestorableTable): any => {
         case "accounts": return prisma.account;
         case "shareholders": return prisma.shareholder;
         case "attendance": return prisma.attendance;
+        case "damage_entries": return prisma.damageEntry;
     }
 };
 
@@ -63,6 +65,7 @@ const NESTED_KEYS: Record<string, string[]> = {
     sales: ["sale_items", "sale_payments", "sale_deliveries", "customer_payments", "cost_layers"],
     purchases: ["purchase_items", "purchase_receives", "supplier_payments"],
     products: ["suppliers", "supplier"],
+    damage_entries: ["damage_items", "damage_receives"],
 };
 
 const DATE_ONLY_KEYS = new Set([
@@ -318,6 +321,75 @@ const restoreItem = async (id: string, user: IRequestUser) => {
 
             const loan = await tx.loan.create({ data: row as Prisma.LoanUncheckedCreateInput });
             await reconcileLoanProfitMirror(tx, loan, user);
+        } else if (tableName === "damage_entries") {
+            // Take the stock off again, the mirror of what deleteDamageEntry
+            // put back. Recreating the entry without that would leave the shop
+            // reading that five chairs are broken while all five sit in the
+            // available count.
+            //
+            // The draw is done fresh rather than replayed from the old cost
+            // layers: those pointed at batch rows whose remaining_qty has since
+            // been given back, and other sales may have moved through them in
+            // the meantime. Drawing again asks the batch table what is true
+            // now, which is the only honest answer.
+            //
+            // deleteDamageEntry refuses once anything has been received, so an
+            // entry in the bin never has a receive to rebuild - every line is
+            // fully outstanding, exactly as it was when it was first recorded.
+            const row = reviveRow(tableName, snapshot, user.ownerId);
+            const lines = (snapshot.damage_items ?? []) as Array<Record<string, unknown>>;
+
+            const entry = await tx.damageEntry.create({ data: row as Prisma.DamageEntryUncheckedCreateInput });
+
+            for (const line of lines) {
+                const productId = line.product_id ? String(line.product_id) : "";
+                const qty = Number(line.qty || 0);
+                const draw = productId
+                    ? await drawStockFifo(tx, { productId, qty }, user)
+                    : { takes: [], shortfall: qty, unitCost: 0, totalCost: 0, drawn: 0, drawnCost: 0 };
+
+                const restoredLine = await tx.damageItem.create({
+                    data: {
+                        owner_id: user.ownerId,
+                        damage_entry_id: entry.id,
+                        product_id: productId || null,
+                        product_code: String(line.product_code || ""),
+                        product_name: String(line.product_name || ""),
+                        qty,
+                        unit_cost: draw.unitCost,
+                        total_cost: draw.totalCost,
+                    },
+                });
+
+                for (const take of draw.takes) {
+                    await tx.damageCostLayer.create({
+                        data: {
+                            owner_id: user.ownerId,
+                            damage_item_id: restoredLine.id,
+                            inventory_batch_id: take.batchId,
+                            qty: take.qty,
+                            dp_price: take.dpPrice,
+                            cost_amount: take.qty * take.dpPrice,
+                        },
+                    });
+                }
+
+                if (productId) {
+                    await adjustInventoryLevel(
+                        tx,
+                        {
+                            productId,
+                            productName: String(line.product_name || ""),
+                            qtyChange: -qty,
+                            changeType: "adjustment",
+                            referenceId: entry.id,
+                            referenceType: "damage_restore",
+                            notes: `Damage entry ${entry.doc_no} restored`,
+                        },
+                        user
+                    );
+                }
+            }
         } else {
             const delegate = delegateFor(tableName);
             const row = reviveRow(tableName, snapshot, user.ownerId);
