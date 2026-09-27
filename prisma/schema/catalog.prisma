@@ -32,6 +32,7 @@ model Product {
   inventory_batches     InventoryBatch[]
   sale_items            SaleItem[]
   sale_item_cost_layers SaleItemCostLayer[]
+  damage_items          DamageItem[]
 
   @@unique([owner_id, product_code])
   @@index([owner_id])
@@ -216,6 +217,7 @@ model InventoryBatch {
   purchase_item    PurchaseItem?       @relation(fields: [purchase_item_id], references: [id], onDelete: SetNull)
   purchase_receive PurchaseReceive?    @relation(fields: [purchase_receive_id], references: [id], onDelete: SetNull)
   cost_layers      SaleItemCostLayer[]
+  damage_layers    DamageCostLayer[]
 
   @@index([owner_id])
   @@index([product_id, received_date])
@@ -243,4 +245,132 @@ model PriceUpdateBatch {
 
   @@index([owner_id, created_at])
   @@map("price_update_batches")
+}
+
+// ---------------------------------------------------------------------------
+// Damage
+//
+// Furniture that breaks in the showroom or the godown, or arrives broken from
+// the supplier. Shaped like Purchase on purpose - a header, its lines, and
+// receives against those lines - because the flow is the same one: something
+// goes out, some or all of it comes back.
+//
+// What this adds over the manual stock adjustment it replaces: the cost of
+// what left is captured on the line, so the shop can say what the damage was
+// worth rather than only how many pieces it was.
+// ---------------------------------------------------------------------------
+
+model DamageEntry {
+  id            String       @id @default(uuid())
+  owner_id      String
+  doc_no        String
+  date          DateTime     @default(now()) @db.Date
+  source        DamageSource @default(own_stock)
+  action        DamageAction @default(repair)
+  /// Optional: own-stock damage has no supplier. Denormalised name beside it,
+  /// as Purchase does, so a deleted supplier does not blank the paperwork.
+  supplier_id   String?
+  supplier_name String       @default("")
+  status        DamageStatus @default(pending)
+  notes         String       @default("")
+  branch_id     String?
+  deleted_at    DateTime?
+  deleted_by    String?
+  created_by    String?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  supplier        Supplier?       @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  damage_items    DamageItem[]
+  damage_receives DamageReceive[]
+  /// Repair costs booked against this entry, and the write-off when a piece is
+  /// scrapped. Plural because Prisma names back-relations that way.
+  expenses        Expense[]
+  /// Refunds or credit the supplier paid back.
+  other_incomes   OtherIncome[]
+
+  @@unique([owner_id, doc_no])
+  @@index([owner_id])
+  @@index([date])
+  @@index([supplier_id])
+  @@index([owner_id, date(sort: Desc)])
+  @@map("damage_entries")
+}
+
+model DamageItem {
+  id              String   @id @default(uuid())
+  owner_id        String
+  damage_entry_id String
+  product_id      String?
+  product_code    String
+  product_name    String
+  qty             Int      @default(1)
+  /// What the stock that left actually cost, drawn FIFO from inventory_batches
+  /// at entry. Not the product's list DP - the same distinction that makes the
+  /// Sales Ledger's purchase amount trustworthy.
+  unit_cost       Decimal  @default(0) @db.Decimal(15, 2)
+  total_cost      Decimal  @default(0) @db.Decimal(15, 2)
+  received_qty    Int      @default(0)
+  created_at      DateTime @default(now())
+
+  damage_entry    DamageEntry        @relation(fields: [damage_entry_id], references: [id], onDelete: Cascade)
+  product         Product?           @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  damage_receives DamageReceive[]
+  cost_layers     DamageCostLayer[]
+
+  @@index([owner_id])
+  @@index([damage_entry_id])
+  @@index([product_id])
+  @@map("damage_items")
+}
+
+/// Which batches the damaged goods actually came off, and at what price.
+///
+/// The same job SaleItemCostLayer does for a sale, and needed for the same
+/// reason: without it, deleting an entry could put the quantity back but not
+/// onto the batches it was taken from, so FIFO order and per-batch value would
+/// drift a little further apart every time somebody corrected a mistake.
+///
+/// A row with no inventory_batch_id is the shortfall - goods damaged that the
+/// batch table had no record of, which is possible because stock is allowed to
+/// go negative here.
+model DamageCostLayer {
+  id                String   @id @default(uuid())
+  owner_id          String
+  damage_item_id    String
+  inventory_batch_id String?
+  qty               Int      @default(0)
+  dp_price          Decimal  @default(0) @db.Decimal(15, 2)
+  cost_amount       Decimal  @default(0) @db.Decimal(15, 2)
+  created_at        DateTime @default(now())
+
+  damage_item     DamageItem      @relation(fields: [damage_item_id], references: [id], onDelete: Cascade)
+  inventory_batch InventoryBatch? @relation(fields: [inventory_batch_id], references: [id], onDelete: SetNull)
+
+  @@index([owner_id])
+  @@index([damage_item_id])
+  @@index([inventory_batch_id])
+  @@map("damage_cost_layers")
+}
+
+model DamageReceive {
+  id              String              @id @default(uuid())
+  owner_id        String
+  damage_entry_id String
+  damage_item_id  String
+  receive_date    DateTime            @default(now()) @db.Date
+  receiver_name   String              @default("")
+  received_qty    Int                 @default(0)
+  result          DamageReceiveResult @default(repaired)
+  notes           String              @default("")
+  created_by      String?
+  created_at      DateTime            @default(now())
+
+  damage_entry DamageEntry @relation(fields: [damage_entry_id], references: [id], onDelete: Cascade)
+  damage_item  DamageItem  @relation(fields: [damage_item_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@index([damage_entry_id])
+  @@index([damage_item_id])
+  @@map("damage_receives")
 }

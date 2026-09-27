@@ -187,6 +187,10 @@ model Expense {
   branch_id     String?
   branch_name   String    @default("")
   notes         String    @default("")
+  /// Set when a Damage entry wrote this row - a repair cost paid out, or the
+  /// write-off when a piece came back scrapped. Such a row is edited and
+  /// deleted from Damage, not from the Expenses page.
+  damage_entry_id String?
   deleted_at    DateTime?
   deleted_by    String?
   created_by    String?
@@ -198,10 +202,12 @@ model Expense {
   /// Profit payments that wrote this expense. At most one, but Prisma names a
   /// back-relation in the plural whatever the cardinality.
   loans               Loan[]
+  damage_entry        DamageEntry?        @relation(fields: [damage_entry_id], references: [id], onDelete: SetNull)
 
   @@index([owner_id])
   @@index([date])
   @@index([category_id])
+  @@index([damage_entry_id])
   @@index([owner_id, date(sort: Desc)])
   @@map("expenses")
 }
@@ -218,17 +224,22 @@ model OtherIncome {
   account_id    String?
   account_name  String     @default("")
   notes         String     @default("")
+  /// Set when a Damage entry wrote this row - a refund or credit the supplier
+  /// paid back for broken goods. Edited and deleted from Damage.
+  damage_entry_id String?
   created_by    String?
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 
-  supplier Supplier? @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
-  account  Account?  @relation(fields: [account_id], references: [id], onDelete: Restrict)
+  supplier     Supplier?    @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  account      Account?     @relation(fields: [account_id], references: [id], onDelete: Restrict)
   /// Profit receipts that wrote this row. See Expense.loans.
-  loans    Loan[]
+  loans        Loan[]
+  damage_entry DamageEntry? @relation(fields: [damage_entry_id], references: [id], onDelete: SetNull)
 
   @@index([owner_id])
   @@index([date])
+  @@index([damage_entry_id])
   @@index([owner_id, date(sort: Desc)])
   @@map("other_incomes")
 }

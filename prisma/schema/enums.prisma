@@ -57,6 +57,34 @@ enum InventoryChangeType {
   adjustment
 }
 
+// Damage: furniture that breaks in the showroom or arrives broken, and what
+// the shop decides to do with it. Kept beside ShippingStatus because the
+// module is shaped like Purchase - an entry, then receives against it.
+enum DamageSource {
+  own_stock
+  supplier
+}
+
+enum DamageAction {
+  repair
+  return
+  exchange
+}
+
+enum DamageStatus {
+  pending
+  partial
+  completed
+}
+
+// What came back. `scrapped` is the one that returns no stock: the piece was
+// beyond saving, so the goods are gone for good.
+enum DamageReceiveResult {
+  repaired
+  replaced
+  scrapped
+}
+
 enum SaleStatus {
   draft
   completed
