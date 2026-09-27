@@ -78,10 +78,38 @@ const deleteDamageEntry = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getDamageTransactions = catchAsync(async (req: Request, res: Response) => {
+    const result = await DamageService.getDamageTransactions(req.user as IRequestUser);
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Damage transactions retrieved successfully",
+        data: result,
+    });
+});
+
+const addDamageTransaction = catchAsync(async (req: Request, res: Response) => {
+    const result = await DamageService.addDamageTransaction(
+        req.params.id as string,
+        req.body,
+        req.user as IRequestUser
+    );
+
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.CREATED,
+        message: "Damage transaction saved successfully",
+        data: result,
+    });
+});
+
 export const DamageController = {
     getAllDamageEntries,
     createDamageEntry,
     updateDamageEntry,
     receiveDamageItem,
     deleteDamageEntry,
+    getDamageTransactions,
+    addDamageTransaction,
 };

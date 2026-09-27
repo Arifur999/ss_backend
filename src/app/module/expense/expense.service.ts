@@ -58,6 +58,24 @@ const assertNotLoanOwned = async (expenseId: string, ownerId: string) => {
     }
 };
 
+/**
+ * The same refusal for a row Damage wrote - a repair paid out, or the
+ * write-off when a piece came back scrapped. Editing it here would put the
+ * expense and the damage entry that explains it out of step.
+ */
+const assertNotDamageOwned = async (expenseId: string, ownerId: string) => {
+    const owned = await prisma.expense.count({
+        where: { id: expenseId, owner_id: ownerId, damage_entry_id: { not: null } },
+    });
+
+    if (owned > 0) {
+        throw new AppError(
+            status.CONFLICT,
+            "This expense comes from a damage entry. Edit or delete it from Damage - Transactions."
+        );
+    }
+};
+
 const updateExpense = async (id: string, payload: IUpdateExpensePayload, user: IRequestUser) => {
     const existing = await prisma.expense.findFirst({
         where: { id, owner_id: user.ownerId },
@@ -68,6 +86,7 @@ const updateExpense = async (id: string, payload: IUpdateExpensePayload, user: I
     }
 
     await assertNotLoanOwned(id, user.ownerId);
+    await assertNotDamageOwned(id, user.ownerId);
 
     return prisma.expense.update({
         where: { id },
@@ -88,6 +107,7 @@ const deleteExpense = async (id: string, user: IRequestUser, recycleMeta?: IRecy
     }
 
     await assertNotLoanOwned(id, user.ownerId);
+    await assertNotDamageOwned(id, user.ownerId);
 
     await prisma.$transaction(async (tx) => {
         // Salary transactions may reference this expense; detach them first.

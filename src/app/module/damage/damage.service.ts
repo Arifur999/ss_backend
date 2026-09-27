@@ -10,6 +10,7 @@ import { nextDamageStatus, returnsStock } from "../../shared/damageStatus.js";
 import { adjustInventoryLevel, drawStockFifo, releaseDamageCostLayers, returnStockBatch } from "../inventory/fifo.helpers.js";
 import {
     ICreateDamagePayload,
+    IDamageTransactionPayload,
     IReceiveDamageItemPayload,
     IUpdateDamagePayload,
 } from "./damage.validation.js";
@@ -41,6 +42,22 @@ const resolveDocNo = async (tx: Tx, ownerId: string, requested?: string) => {
         if (!clash) return candidate;
     }
     throw new AppError(status.CONFLICT, "Could not allocate a document number");
+};
+
+/**
+ * The categories Damage files its own money under, created on first use.
+ *
+ * The owner never has to set these up before recording a breakage, and once
+ * they exist they behave like any other category - renameable, reportable, and
+ * counted by deleteCategory so one still in use cannot be removed.
+ */
+const DAMAGE_LOSS_CATEGORY = "Damage Loss";
+const DAMAGE_REPAIR_CATEGORY = "Damage Repair";
+
+const resolveDamageCategory = async (tx: Tx, ownerId: string, name: string) => {
+    const existing = await tx.expenseCategory.findFirst({ where: { owner_id: ownerId, name } });
+    if (existing) return existing;
+    return tx.expenseCategory.create({ data: { owner_id: ownerId, name } });
 };
 
 /** Recompute an entry's status from its lines. The rule lives in shared/damageStatus. */
@@ -282,10 +299,116 @@ const receiveDamageItem = async (
             );
         }
 
+        // A scrapped piece is the moment the goods stop being an asset in
+        // repair and become a loss. Booked here rather than at entry, because
+        // a chair away at the carpenter's is not lost yet and booking then
+        // reversing is how books get muddled.
+        if (payload.result === "scrapped") {
+            const category = await resolveDamageCategory(tx, user.ownerId, DAMAGE_LOSS_CATEGORY);
+            await tx.expense.create({
+                data: {
+                    owner_id: user.ownerId,
+                    date: new Date(payload.receive_date),
+                    category_id: category.id,
+                    category_name: category.name,
+                    amount: payload.received_qty * Number(item.unit_cost),
+                    // No cash left the till - the GOODS did. A null account
+                    // reaches the P&L and never the Balance Dashboard, the same
+                    // rule "discount allowed" runs on.
+                    account_id: null,
+                    account_name: "",
+                    damage_entry_id: entryId,
+                    notes: `Written off - ${entry.doc_no} - ${item.product_name}`,
+                    created_by: user.userId,
+                },
+            });
+        }
+
         await refreshDamageStatus(tx, entryId);
 
         return tx.damageEntry.findUnique({ where: { id: entryId }, include: damageInclude });
     });
+};
+
+/**
+ * Money against an entry: a repair paid out, or a refund received.
+ *
+ * Both are written into the tables the rest of the app already reads -
+ * expenses and other_incomes - rather than a table of Damage's own, so the
+ * Balance Dashboard, the P&L, the reports and the Account Ledger are right
+ * without any of them being touched. The damage_entry_id is what lets the
+ * Transactions page find them again.
+ */
+const addDamageTransaction = async (
+    entryId: string,
+    payload: IDamageTransactionPayload,
+    user: IRequestUser
+) => {
+    const entry = await prisma.damageEntry.findFirst({
+        where: { id: entryId, owner_id: user.ownerId, deleted_at: null },
+    });
+    if (!entry) throw new AppError(status.NOT_FOUND, "Damage entry not found");
+
+    await assertOwnedReferences(payload, user.ownerId, {
+        account_id: "account",
+        category_id: "expenseCategory",
+    });
+
+    if (payload.kind === "supplier_refund") {
+        return prisma.otherIncome.create({
+            data: {
+                owner_id: user.ownerId,
+                date: new Date(payload.date),
+                income_type: entry.supplier_id ? "supplier" : "other",
+                supplier_id: entry.supplier_id,
+                supplier_name: entry.supplier_name,
+                source_name: `Damage refund - ${entry.doc_no}`,
+                amount: payload.amount,
+                account_id: payload.account_id,
+                account_name: payload.account_name ?? "",
+                damage_entry_id: entryId,
+                notes: payload.notes ?? "",
+                created_by: user.userId,
+            },
+        });
+    }
+
+    return prisma.$transaction(async (tx) => {
+        const category = payload.category_id
+            ? { id: payload.category_id, name: payload.category_name ?? "" }
+            : await resolveDamageCategory(tx, user.ownerId, DAMAGE_REPAIR_CATEGORY);
+
+        return tx.expense.create({
+            data: {
+                owner_id: user.ownerId,
+                date: new Date(payload.date),
+                category_id: category.id,
+                category_name: category.name,
+                amount: payload.amount,
+                account_id: payload.account_id,
+                account_name: payload.account_name ?? "",
+                damage_entry_id: entryId,
+                notes: payload.notes ?? `Repair - ${entry.doc_no}`,
+                created_by: user.userId,
+            },
+        });
+    });
+};
+
+/** Everything booked against an entry, both directions, newest first. */
+const getDamageTransactions = async (user: IRequestUser) => {
+    const [expenses, incomes] = await Promise.all([
+        prisma.expense.findMany({
+            where: { owner_id: user.ownerId, deleted_at: null, damage_entry_id: { not: null } },
+            orderBy: [{ date: "desc" }, { created_at: "desc" }],
+        }),
+        prisma.otherIncome.findMany({
+            where: { owner_id: user.ownerId, damage_entry_id: { not: null } },
+            orderBy: [{ date: "desc" }, { created_at: "desc" }],
+        }),
+    ]);
+
+    return { expenses, other_incomes: incomes };
 };
 
 /**
@@ -362,4 +485,6 @@ export const DamageService = {
     updateDamageEntry,
     receiveDamageItem,
     deleteDamageEntry,
+    addDamageTransaction,
+    getDamageTransactions,
 };

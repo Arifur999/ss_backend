@@ -86,3 +86,24 @@ export const receiveDamageItemZodSchema = z.object({
 export type ICreateDamagePayload = z.infer<typeof createDamageZodSchema>;
 export type IUpdateDamagePayload = z.infer<typeof updateDamageZodSchema>;
 export type IReceiveDamageItemPayload = z.infer<typeof receiveDamageItemZodSchema>;
+
+/**
+ * A repair paid out, or a refund the supplier paid back.
+ *
+ * `kind` picks which table the row lands in - expenses or other_incomes - so
+ * the Damage Transactions page can write both without two endpoints. Both
+ * require an account: real money moves here, unlike the write-off on a scrap,
+ * which has no account because no cash left the till.
+ */
+export const damageTransactionZodSchema = z.object({
+    kind: z.enum(["repair_cost", "supplier_refund"], "Invalid transaction kind"),
+    date: z.string("Date must be string (YYYY-MM-DD)").min(1, "Date is required"),
+    amount: z.number("Amount must be a number").positive("Amount must be more than zero"),
+    account_id: z.uuid("Choose the account the money moved through"),
+    account_name: z.string("Account name must be string").optional(),
+    category_id: z.uuid("Category id must be a valid UUID").optional(),
+    category_name: z.string("Category name must be string").optional(),
+    notes: z.string("Notes must be string").optional(),
+});
+
+export type IDamageTransactionPayload = z.infer<typeof damageTransactionZodSchema>;
