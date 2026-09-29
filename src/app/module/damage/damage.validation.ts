@@ -11,6 +11,16 @@ const damageItemZodSchema = z.object({
     product_code: z.string("Product code must be string").optional(),
     product_name: z.string("Product name must be string").min(1, "Product name is required"),
     qty: z.number("Qty must be a number").int("Qty must be a whole number").positive("Qty must be positive"),
+    /**
+     * What one unit is worth, if the operator wants to say.
+     *
+     * Left out or zero, the server draws it FIFO from the batches, which is
+     * the normal case and the point of the module. It is worth accepting
+     * because the draw can come up empty - damaging a piece the batch table
+     * has no record of - and then FIFO has no price to offer and a typed one
+     * is the only honest figure available.
+     */
+    unit_cost: z.number("Unit cost must be a number").nonnegative("Unit cost cannot be negative").optional(),
 });
 
 // The three fields the supplier rule reads, shared by create and update so the

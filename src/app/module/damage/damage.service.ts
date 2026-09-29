@@ -4,6 +4,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { assertOwnedReferences } from "../../shared/assertOwnership.js";
+import { roundTaka } from "../../shared/money.js";
 import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, type IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { nextDamageStatus, returnsStock } from "../../shared/damageStatus.js";
@@ -127,6 +128,16 @@ const createDamageEntry = async (payload: ICreateDamagePayload, user: IRequestUs
             // shortfall is not an error here - stock is allowed to go negative.
             const draw = await drawStockFifo(tx, { productId: item.product_id, qty: item.qty }, user);
 
+            // A stated price wins over the drawn one, and is the only figure
+            // available when the draw came up empty - a piece damaged that the
+            // batch table has no record of. The LAYERS below still record what
+            // actually came off each batch, because they are what a delete
+            // gives back; this is the valuation, and the two are allowed to
+            // differ when the owner says so.
+            const stated = roundTaka(item.unit_cost);
+            const unitCost = stated > 0 ? stated : draw.unitCost;
+            const totalCost = stated > 0 ? roundTaka(stated * item.qty) : draw.totalCost;
+
             const line = await tx.damageItem.create({
                 data: {
                     owner_id: user.ownerId,
@@ -135,8 +146,8 @@ const createDamageEntry = async (payload: ICreateDamagePayload, user: IRequestUs
                     product_code: item.product_code ?? "",
                     product_name: item.product_name,
                     qty: item.qty,
-                    unit_cost: draw.unitCost,
-                    total_cost: draw.totalCost,
+                    unit_cost: unitCost,
+                    total_cost: totalCost,
                 },
             });
 
