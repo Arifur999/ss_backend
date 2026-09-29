@@ -88,3 +88,31 @@ model MarketingContact {
   @@index([owner_id])
   @@map("marketing_contacts")
 }
+
+// A prospect nobody has sold to yet: a shop or office that might buy, noted
+// down after a visit or a phone call. Kept apart from MarketingContact, which
+// is only ever a name and a number - a lead carries who they are and where
+// they are, because that is what makes a follow-up possible weeks later.
+//
+// Leads are a recipient type on the Marketing page like the other four, so a
+// campaign can go to prospects without them being pretended into customers.
+model Lead {
+  id           String   @id @default(uuid())
+  owner_id     String
+  date         DateTime @default(now()) @db.Date
+  organization String
+  designation  String   @default("")
+  name         String
+  phone        String
+  address      String   @default("")
+  notes        String   @default("")
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+
+  @@index([owner_id])
+  @@index([owner_id, date(sort: Desc)])
+  @@map("leads")
+}
