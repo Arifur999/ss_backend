@@ -1,7 +1,9 @@
 import z from "zod";
 
-// Organization, name and phone are what make a lead followable weeks later;
-// designation and address help and are not worth blocking a save over.
+// Everything but designation is required: an organization with no address is
+// a lead nobody can go back to, and the whole point of writing one down is
+// that somebody picks it up weeks later. Designation is the one thing that can
+// genuinely be unknown after a first call.
 export const createLeadZodSchema = z.object({
     date: z.string("Date must be string (YYYY-MM-DD)").min(1, "Date is required"),
     organization: z.string("Organization must be string").min(1, "Organization is required"),
@@ -10,7 +12,7 @@ export const createLeadZodSchema = z.object({
     phone: z
         .string("Phone must be string")
         .regex(/^01[0-9]{9}$/, "Phone must be a valid 11-digit number, e.g. 01712345678"),
-    address: z.string("Address must be string").optional(),
+    address: z.string("Address must be string").min(1, "Address is required"),
     notes: z.string("Notes must be string").optional(),
 });
 

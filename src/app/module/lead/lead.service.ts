@@ -33,7 +33,7 @@ const createLead = async (payload: ICreateLeadPayload, user: IRequestUser) => {
             designation: (payload.designation || "").trim(),
             name: payload.name.trim(),
             phone,
-            address: (payload.address || "").trim(),
+            address: payload.address.trim(),
             notes: (payload.notes || "").trim(),
             created_by: user.userId,
         },
