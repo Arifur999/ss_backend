@@ -2,10 +2,11 @@ import { Router } from "express";
 import { Role } from "../../../generated/prisma/enums.js";
 import { checkAuth } from "../../middleware/checkAuth.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
-import { requirePermission } from "../../middleware/requirePermission.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { ReportController } from "./report.controller.js";
 import { emailReportZodSchema } from "./report.validation.js";
+import { requirePermission } from "../../middleware/requirePermission.js";
+import { READS } from "../../shared/permissions.js";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.post(
     "/email",
     checkAuth(Role.owner, Role.manager, Role.accountant),
     checkSubscription,
-    requirePermission("View Reports"),
+    requirePermission(...READS.reports),
     validateRequest(emailReportZodSchema),
     ReportController.emailReport
 );
