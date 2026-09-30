@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import status from "http-status";
 import { Role } from "../../generated/prisma/enums.js";
 import AppError from "../errorHelpers/AppError.js";
-import type { Permission } from "../shared/permissions.js";
+import { describePermissions, type Permission } from "../shared/permissions.js";
 
 /**
  * Narrows what a team member may do WITHIN the role checkAuth already allowed.
@@ -45,14 +45,16 @@ export const requirePermission = (...allowed: Permission[]) =>
             return next();
         }
 
-        // Names the missing permission on purpose. The caller is a signed-in
-        // colleague, not an attacker probing the system, and "you need Delete
-        // Sale for this" is the difference between them asking the owner to tick
-        // one box and reporting the app as broken.
+        // Names the missing permission on purpose, and names it the way the
+        // Permissions screen does. The caller is a signed-in colleague, not an
+        // attacker probing the system, and "enable Sales - Sales Ledger" is the
+        // difference between them asking the owner to tick one box and reporting
+        // the app as broken. describePermissions is what turns the stored
+        // page:sales.ledger back into the box and tick they will look for.
         return next(
             new AppError(
                 status.FORBIDDEN,
-                `You do not have permission for this action. Ask the owner to enable: ${allowed.join(" or ")}.`
+                `You do not have permission for this action. Ask the owner to enable: ${describePermissions(allowed)}.`
             )
         );
     };
