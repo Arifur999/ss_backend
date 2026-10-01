@@ -100,9 +100,4 @@ describe("requirePermission", () => {
             assert.ok(!outcome.message.includes("page:"), "the raw stored name leaked into the message");
         }
     });
-
-    it("still reads the deprecated vocabulary, for the migration window", () => {
-        assert.equal(run(staff(["View Sales"]), "View Sales").ok, true);
-        assert.equal(run(staff(["View Sales"]), "page:sales.ledger").ok, false);
-    });
 });

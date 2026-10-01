@@ -117,24 +117,24 @@ export const DELETE_PERMISSIONS = [
 ] as const;
 
 /**
- * The previous, action-shaped vocabulary. DEPRECATED - remove after the
- * migration is confirmed in production.
+ * The previous, action-shaped vocabulary. NO LONGER ACCEPTED.
  *
- * These are kept accepted for exactly one release, and for one reason:
- * sanitizePermissions drops any name this build does not know, and an empty
- * array means "everything the role allows". So the moment the new list ships,
- * every user whose ticks have not yet been translated by
- * src/scripts/migratePermissions.ts would be SILENTLY WIDENED to their full role -
- * no error, no log, nothing to notice. Keeping the old names valid closes that
- * window: an owner saving a user mid-deploy does not lose their old ticks, and
- * the migration can run when somebody is watching.
+ * These were kept valid for one release while the stored data was translated,
+ * because sanitizePermissions drops any name this build does not know and an
+ * empty array means "everything the role allows" - so dropping them early would
+ * have silently widened every restricted user to their full role, with no error
+ * and nothing in the logs.
  *
- * Nothing new may reference these. The frontend never offers them, so they
- * cannot be ticked - they can only survive a save.
+ * The translation ran on 2026-10-01 and no row in the database holds one of
+ * these any more, verified with:
  *
- * Removal checklist: run the migration, confirm no row still holds one of these
- * (SELECT id FROM users WHERE permissions && ARRAY[...]), then delete this
- * block, its entry in PERMISSIONS, and the assertion in permissions.test.ts.
+ *   SELECT email FROM users WHERE EXISTS (
+ *     SELECT 1 FROM unnest(permissions) AS p
+ *     WHERE p NOT LIKE 'page:%' AND p NOT LIKE 'act:%');
+ *
+ * so they are out of PERMISSIONS and sanitizePermissions now drops them. The
+ * list stays here as the input domain of legacyPermissionMap, which is what
+ * documents what each old name became.
  */
 export const LEGACY_PERMISSIONS = [
     "View Purchase", "Add Purchase", "Edit Purchase", "Delete Purchase", "Receive Stock",
@@ -151,14 +151,11 @@ export const LEGACY_PERMISSIONS = [
 ] as const;
 
 /** Every permission that maps to a feature this app actually has. */
-export const PERMISSIONS = [...PAGE_PERMISSIONS, ...DELETE_PERMISSIONS, ...LEGACY_PERMISSIONS] as const;
+export const PERMISSIONS = [...PAGE_PERMISSIONS, ...DELETE_PERMISSIONS] as const;
 
 export type PagePermission = (typeof PAGE_PERMISSIONS)[number];
 export type DeletePermission = (typeof DELETE_PERMISSIONS)[number];
 export type Permission = (typeof PERMISSIONS)[number];
-
-/** What the current vocabulary is worth without the deprecated tail. */
-export const CURRENT_PERMISSIONS = [...PAGE_PERMISSIONS, ...DELETE_PERMISSIONS] as const;
 
 /**
  * A digest of a permission vocabulary: how many names, and a hash of them.
@@ -180,14 +177,9 @@ export const fingerprintPermissions = (names: readonly string[]): string => {
  * What the vocabulary hashes to right now. The same literal is asserted in
  * Hatim/src/lib/permissions.test.ts.
  *
- * Computed over CURRENT_PERMISSIONS, NOT over PERMISSIONS - the legacy tail is
- * this repo's transitional business and the frontend has never heard of it, so
- * including it would make the two numbers differ by design and the check
- * worthless.
- *
  * When this fails, check the OTHER repo before editing the number.
  */
-export const PERMISSION_FINGERPRINT = fingerprintPermissions(CURRENT_PERMISSIONS);
+export const PERMISSION_FINGERPRINT = fingerprintPermissions(PERMISSIONS);
 
 /**
  * Which pages display a given table's rows.
@@ -382,7 +374,8 @@ const groupOf = (name: string): string => {
  *
  *   1. A permission removed in a later version stays in old rows; silently
  *      dropping it on read is better than failing the save, and better than
- *      storing a name nothing will ever check.
+ *      storing a name nothing will ever check. This is what now removes the old
+ *      action-shaped names, which are no longer in PERMISSIONS.
  *
  *   2. A delete tick with no page from the same group is dropped. requirePermission
  *      is any-of, so it cannot express "page AND delete" - which means

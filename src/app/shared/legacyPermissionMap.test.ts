@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ALWAYS_GRANTED, LEGACY_MAP, migratePermissionList, needsMigration } from "./legacyPermissionMap.js";
-import { CURRENT_PERMISSIONS, LEGACY_PERMISSIONS } from "./permissions.js";
+import { PERMISSIONS, LEGACY_PERMISSIONS } from "./permissions.js";
 
 describe("the legacy map itself", () => {
     it("covers every old name, so nothing falls through unnoticed", () => {
@@ -16,7 +16,7 @@ describe("the legacy map itself", () => {
     it("maps only onto names that exist today", () => {
         for (const [legacy, names] of Object.entries(LEGACY_MAP)) {
             for (const name of names) {
-                assert.ok(CURRENT_PERMISSIONS.includes(name as never), `${legacy} maps onto unknown "${name}"`);
+                assert.ok(PERMISSIONS.includes(name as never), `${legacy} maps onto unknown "${name}"`);
             }
         }
     });
@@ -130,7 +130,7 @@ describe("migratePermissionList", () => {
     it("never invents a name the server would refuse to store", () => {
         for (const legacy of LEGACY_PERMISSIONS) {
             for (const name of migratePermissionList([legacy])) {
-                assert.ok(CURRENT_PERMISSIONS.includes(name as never), `${legacy} produced unknown "${name}"`);
+                assert.ok(PERMISSIONS.includes(name as never), `${legacy} produced unknown "${name}"`);
             }
         }
     });

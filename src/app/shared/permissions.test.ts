@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-    CURRENT_PERMISSIONS,
     DELETE_PERMISSIONS,
     LEGACY_PERMISSIONS,
     PAGE_PERMISSIONS,
@@ -61,13 +60,12 @@ describe("sanitizePermissions", () => {
         );
     });
 
-    it("still accepts the deprecated vocabulary, because the migration has to be able to run late", () => {
-        // The window between deploying this list and running
-        // src/scripts/migratePermissions.ts. Without it, an owner saving a user
-        // mid-window would have that user's old ticks stripped to nothing - and
-        // an empty array means "everything the role allows", so a restricted
-        // user would be silently widened to their whole role.
-        assert.deepEqual(sanitizePermissions(["View Sales", "Delete Purchase"]), ["View Sales", "Delete Purchase"]);
+    it("no longer accepts the old action-shaped vocabulary", () => {
+        // Safe only because the stored data was translated first and verified
+        // empty of old names. Doing this in the other order would have widened
+        // every restricted user to their full role, silently.
+        assert.deepEqual(sanitizePermissions(["View Sales", "Delete Purchase"]), []);
+        assert.deepEqual(sanitizePermissions(["page:sales.ledger", "View Sales"]), ["page:sales.ledger"]);
     });
 });
 
@@ -95,7 +93,7 @@ describe("the canonical list", () => {
         assert.equal(PERMISSION_FINGERPRINT, "59-2f1ec9b0");
         assert.equal(PAGE_PERMISSIONS.length, 50);
         assert.equal(DELETE_PERMISSIONS.length, 9);
-        assert.equal(CURRENT_PERMISSIONS.length, 59);
+        assert.equal(PERMISSIONS.length, 59);
     });
 
     it("gives every delete tick a page in its own group", () => {
@@ -116,16 +114,14 @@ describe("the canonical list", () => {
         }
     });
 
-    // The removal checklist, as a test. When the legacy tail goes, this is the
-    // assertion that has to be deleted with it - which is the reminder.
-    it("still carries the deprecated tail, and it is exactly the old list", () => {
+    // LEGACY_PERMISSIONS survives as the input domain of legacyPermissionMap -
+    // what documents what each old name became - but nothing may store one.
+    it("keeps the old list as history and accepts none of it", () => {
         assert.equal(LEGACY_PERMISSIONS.length, 52);
-        assert.ok(LEGACY_PERMISSIONS.includes("View Sales"));
-        assert.ok(LEGACY_PERMISSIONS.includes("Recycle Bin"));
-        // Nothing in the tail may collide with a current name.
         for (const legacy of LEGACY_PERMISSIONS) {
-            assert.ok(!CURRENT_PERMISSIONS.includes(legacy as never), `${legacy} is in both lists`);
+            assert.ok(!PERMISSIONS.includes(legacy as never), `${legacy} is still accepted`);
         }
+        assert.deepEqual(sanitizePermissions([...LEGACY_PERMISSIONS]), []);
     });
 });
 

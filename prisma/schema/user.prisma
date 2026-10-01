@@ -34,15 +34,14 @@ model User {
   // morning of the upgrade and nobody loses access. Restrictions only start
   // applying to a user once somebody ticks boxes for them.
   permissions    String[]  @default([])
-  // The permission array as it stood before scripts/migratePermissions.ts
-  // rewrote it from the old action-shaped vocabulary ("View Sales", "Delete
-  // Purchase") to the menu-shaped one ("page:sales.ledger",
-  // "act:purchase.delete").
+  // Was to hold each user permission array as it stood before the move from the
+  // old action-shaped vocabulary ("View Sales") to the menu-shaped one
+  // ("page:sales.ledger"), so a rollback would be one UPDATE.
   //
-  // Kept because the migration is the one step that cannot be undone by
-  // re-running anything: sanitizePermissions drops names it does not know, so
-  // without a copy the old ticks are simply gone. Rolling back is then one
-  // UPDATE. Drop this column two releases after the migration is confirmed.
+  // In the event it was never written to: only two users in the whole database
+  // had any ticks at all, and both were migrated by hand in SQL on 2026-10-01 -
+  // in two steps, holding both vocabularies at once, so there was never a moment
+  // needing a rollback. The column is empty everywhere and can be dropped.
   legacy_permissions String[] @default([])
   // For owners: owner_id = own id. For team members: points to their owner.
   owner_id       String?
