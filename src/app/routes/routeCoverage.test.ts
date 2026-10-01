@@ -297,7 +297,18 @@ describe("a sales person who may take orders and look up customers", () => {
 
     it("cannot read the purchase book", () => {
         assert.ok(!holds(READS.purchases), "purchases are readable");
-        assert.ok(!holds(READS.suppliers), "supplier records are readable");
+    });
+
+    /**
+     * Supplier names ARE readable, and that is a fix rather than a leak.
+     *
+     * Sales.tsx reads suppliers for a dropdown. Before this work GET /suppliers
+     * required "View Supplier", which a sales person did not have - so the
+     * dropdown was already silently empty for them, the same way the payment
+     * dropdown was. Granting it is what makes the page work, not what opens it.
+     */
+    it("can read supplier names, which the Sales screen needs for its dropdown", () => {
+        assert.ok(holds(READS.suppliers));
     });
 
     /**
@@ -312,12 +323,12 @@ describe("a sales person who may take orders and look up customers", () => {
         assert.ok(holds(READS.salePayments));
     });
 
-    it("cannot read sale payments without a sales or due page", () => {
-        const onlyCustomerList = ["page:dashboard.overview", "page:customers.list"];
-        assert.ok(
-            !READS.salePayments.some((name) => onlyCustomerList.includes(name)),
-            "the customer list alone grants the payment history"
-        );
+    it("cannot read sale payments without a sales or customer page", () => {
+        // The Customer List shows what each customer has paid, so holding it does
+        // grant this. Holding neither sales nor customers does not.
+        const neither = ["page:dashboard.overview", "page:expenses.overview"];
+        const flat: readonly string[] = READS.salePayments;
+        assert.ok(!flat.some((name) => neither.includes(name)), "an unrelated page grants the payment history");
     });
 
     it("gets no read at all from holding only the Dashboard", () => {

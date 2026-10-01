@@ -238,6 +238,7 @@ export const READS = {
         "page:purchase.orders", "page:purchase.received",
         "page:damage.entries", "page:damage.receive",
         "page:reports.summary", "page:reports.yearly",
+        "page:sales.ledger",
     ],
     products: [
         "page:products.list", "page:products.update-price",
@@ -246,6 +247,7 @@ export const READS = {
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.received", "page:purchase.history",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
         "page:reports.summary", "page:reports.yearly",
+        "page:purchase.ledger",
     ],
     priceUpdates: [
         "page:products.update-price", "page:products.list",
@@ -256,12 +258,14 @@ export const READS = {
         "page:customers.due-received", "page:customers.ledger", "page:customers.dashboard",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:customers.list",
     ],
     sales: [
         "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
         "page:customers.dashboard", "page:customers.ledger", "page:customers.due-received",
         "page:reports.summary", "page:reports.yearly",
         "page:reports.monthly-target", "page:reports.purchase-target",
+        "page:balance.overview", "page:balance.ledger", "page:shareholders.dashboard", "page:customers.list",
     ],
     purchases: [
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
@@ -285,6 +289,7 @@ export const READS = {
         "page:products.list", "page:products.update-price",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
+        "page:sales.new", "page:sales.ledger", "page:marketing.campaign",
     ],
     customers: [
         "page:customers.dashboard", "page:customers.list",
@@ -298,11 +303,13 @@ export const READS = {
         "page:sales.ledger", "page:sales.history",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:sales.new", "page:customers.list",
     ],
     expenses: [
         "page:expenses.overview", "page:expenses.transactions",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:shareholders.dashboard", "page:customers.due-received", "page:employees.transactions",
     ],
     reports: [
         "page:reports.summary", "page:reports.yearly",
@@ -313,25 +320,30 @@ export const READS = {
         "page:purchase.ledger", "page:purchase.history",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:purchase.orders",
     ],
     otherIncomes: [
         "page:supplier.other-income",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:shareholders.dashboard", "page:loans.transactions",
     ],
     shareholders: [
         "page:shareholders.dashboard", "page:shareholders.invest", "page:shareholders.profit", "page:shareholders.list",
         "page:reports.summary", "page:reports.yearly",
+        "page:balance.overview", "page:balance.ledger",
     ],
     /** Lenders LOOKS like a reference list but carries outstanding balances. */
     loans: [
         "page:loans.dashboard", "page:loans.lenders", "page:loans.transactions", "page:loans.ledger",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
+        "page:marketing.campaign",
     ],
     employees: [
         "page:employees.dashboard", "page:employees.list",
         "page:employees.transactions", "page:employees.attendance",
+        "page:damage.receive", "page:customers.due-received", "page:marketing.campaign",
     ],
     salaryTransactions: [
         "page:employees.transactions", "page:employees.dashboard",
