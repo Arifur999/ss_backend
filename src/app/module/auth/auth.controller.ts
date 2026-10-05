@@ -4,10 +4,29 @@ import { env } from "../../../config/env.js";
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import catchAsync from "../../shared/catchAsync.js";
+import { isMobileClient, mobileRefreshToken, toMobileTokens, type MobileTokens } from "../../shared/mobileClient.js";
 import { sendResponse } from "../../shared/sendResponse.js";
 import { cookieUtils } from "../../utils/cookie.js";
 import { jwtUtils } from "../../utils/jwt.js";
 import { AuthService, IRefreshTokenPayload } from "./auth.service.js";
+
+/**
+ * Hands a new session to the caller the way it can keep it: the website gets
+ * the httpOnly cookie pair, the mobile app gets the pair in the response body
+ * (see shared/mobileClient.ts). Never both - a cookie the app does not know
+ * about would outlive its own sign-out.
+ */
+const deliverSession = (
+    req: Request,
+    res: Response,
+    result: { accessToken: string; refreshToken: string; sessionMaxAgeMs: number },
+): { tokens?: MobileTokens } => {
+    if (isMobileClient(req)) {
+        return { tokens: toMobileTokens(result) };
+    }
+    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
+    return {};
+};
 
 const registerOwner = catchAsync(async (req: Request, res: Response) => {
     // Registration never sets cookies any more: the account exists but stays
@@ -39,8 +58,8 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
     }
 
     // Only reached when the login OTP gate is switched off (LOGIN_OTP_ENABLED
-    // =false): log straight in with the httpOnly cookie pair.
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
+    // =false): log straight in.
+    const session = deliverSession(req, res, result);
 
     sendResponse(res, {
         success: true,
@@ -50,16 +69,17 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
             user: result.user,
             profile: result.profile,
             subscription: result.subscription,
+            ...session,
         },
     });
 });
 
 // Final step of registration / unverified login: the submitted OTP is checked
-// and, on success, the account is marked verified and logged in (cookies set).
+// and, on success, the account is marked verified and logged in.
 const verifyOtp = catchAsync(async (req: Request, res: Response) => {
     const result = await AuthService.verifyEmailOtp(req.body.email, req.body.otp);
 
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
+    const session = deliverSession(req, res, result);
 
     sendResponse(res, {
         success: true,
@@ -69,6 +89,7 @@ const verifyOtp = catchAsync(async (req: Request, res: Response) => {
             user: result.user,
             profile: result.profile,
             subscription: result.subscription,
+            ...session,
         },
     });
 });
@@ -119,7 +140,10 @@ const getMe = catchAsync(async (req: Request, res: Response) => {
 });
 
 const refreshToken = catchAsync(async (req: Request, res: Response) => {
-    const token = cookieUtils.getCookie(req, "refreshToken");
+    // The app's token comes from the body and ONLY the body - never fall back
+    // to the cookie in mobile mode (see shared/mobileClient.ts for why).
+    const mobile = isMobileClient(req);
+    const token = mobile ? mobileRefreshToken(req) : cookieUtils.getCookie(req, "refreshToken");
 
     if (!token) {
         throw new AppError(status.UNAUTHORIZED, "No refresh token provided");
@@ -131,7 +155,7 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
         // Cookie hygiene: a dead/tampered refresh token is useless - clear
         // both cookies so the browser stops retrying with garbage and the
         // frontend lands cleanly on the login page.
-        cookieUtils.clearAuthCookies(res);
+        if (!mobile) cookieUtils.clearAuthCookies(res);
         throw new AppError(status.UNAUTHORIZED, "Invalid refresh token");
     }
 
@@ -141,13 +165,13 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
     // both stamped with the ORIGINAL session deadline. The cookies are given
     // only the time left in that window, so the browser drops them exactly
     // when the session ends instead of holding dead tokens.
-    cookieUtils.setAuthCookies(res, result.accessToken, result.refreshToken, result.sessionMaxAgeMs);
+    const session = deliverSession(req, res, result);
 
     sendResponse(res, {
         success: true,
         httpStatus: status.OK,
         message: "Tokens refreshed successfully",
-        data: { refreshed: true },
+        data: { refreshed: true, ...session },
     });
 });
 

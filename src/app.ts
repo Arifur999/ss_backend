@@ -88,6 +88,9 @@ app.use(cors({
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    // X-Client is deliberately NOT here: it switches auth into mobile mode,
+    // which returns tokens in the body (shared/mobileClient.ts). The app is not
+    // a browser and needs no CORS; keeping it out stops any web page using it.
     allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
