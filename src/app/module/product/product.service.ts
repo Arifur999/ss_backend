@@ -527,7 +527,40 @@ const deleteProduct = async (id: string, user: IRequestUser) => {
     return { message: "Product moved to recycle bin" };
 };
 
+/**
+ * How many sale and purchase lines use a product - the check the website's
+ * Product List makes before a delete ("linked to existing sales or purchase
+ * transactions"), which it does by downloading every sale and purchase. This
+ * answers the same question in two counts, so the mobile app can ask it
+ * without that download. Lines of deleted sales or purchases do not count,
+ * exactly as they are absent from the lists the website counts.
+ *
+ * Read-only: deleteProduct itself is unchanged.
+ */
+const getProductUsage = async (id: string, user: IRequestUser) => {
+    const product = await prisma.product.findFirst({
+        where: { id, owner_id: user.ownerId, deleted_at: null },
+        select: { id: true },
+    });
+
+    if (!product) {
+        throw new AppError(status.NOT_FOUND, "Product not found");
+    }
+
+    const [sales, purchases] = await Promise.all([
+        prisma.saleItem.count({
+            where: { owner_id: user.ownerId, product_id: id, sale: { deleted_at: null } },
+        }),
+        prisma.purchaseItem.count({
+            where: { owner_id: user.ownerId, product_id: id, purchase: { deleted_at: null } },
+        }),
+    ]);
+
+    return { sales, purchases };
+};
+
 export const ProductService = {
+    getProductUsage,
     getAllProducts,
     getProductCategories,
     getProductIds,

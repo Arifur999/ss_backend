@@ -103,7 +103,18 @@ const deleteProduct = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getProductUsage = catchAsync(async (req: Request, res: Response) => {
+    const result = await ProductService.getProductUsage(req.params.id as string, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Product usage retrieved successfully",
+        data: result,
+    });
+});
+
 export const ProductController = {
+    getProductUsage,
     getAllProducts,
     getProductCategories,
     getProductIds,

@@ -24,6 +24,9 @@ router.post("/bulk-update-prices", checkAuth(Role.owner, Role.manager), checkSub
 router.get("/price-updates", checkAuth(), checkSubscription, requirePermission(...READS.priceUpdates), ProductController.getPriceUpdates);
 router.post("/price-updates", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:products.update-price"), validateRequest(recordPriceUpdateZodSchema), ProductController.recordPriceUpdate);
 router.patch("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:products.list"), validateRequest(updateProductZodSchema), ProductController.updateProduct);
+// How many sale and purchase lines use a product, asked before a delete. Gated
+// like the delete it precedes; read-only, and new - nothing else changes.
+router.get("/:id/usage", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("act:products.delete"), ProductController.getProductUsage);
 router.delete("/:id", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("act:products.delete"), ProductController.deleteProduct);
 
 export const ProductRoutes = router;
