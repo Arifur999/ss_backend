@@ -64,6 +64,15 @@ const updatePayment = async (id: string, payload: IUpdateCustomerPaymentPayload,
         throw new AppError(status.NOT_FOUND, "Customer payment not found");
     }
 
+    // The same check createPayment makes. An edit is a write too: moving a
+    // receipt onto another workspace's account, customer or sale linked their
+    // row to this one, and nothing stopped it.
+    await assertOwnedReferences(payload, user.ownerId, {
+        account_id: "account",
+        customer_id: "customer",
+        sale_id: "sale",
+    });
+
     return prisma.$transaction(async (tx) => {
         const updated = await tx.customerPayment.update({
             where: { id },
