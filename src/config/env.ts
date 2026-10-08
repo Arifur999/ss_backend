@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { parseReviewEmails } from "../app/shared/loginOtp.js";
 
 dotenv.config();
 
@@ -17,6 +18,9 @@ interface ENVConfig {
     // LOGIN_OTP_ENABLED=false to fall back to password-only login if the mail
     // provider is down and users would otherwise be locked out.
     LOGIN_OTP_ENABLED: boolean;
+    // Accounts that sign in without the emailed code - the app stores' review
+    // logins. Comma-separated, empty by default; see shared/loginOtp.ts.
+    REVIEW_LOGIN_EMAILS: string[];
     FRONTEND_URL: string;
     SUPER_ADMIN_EMAIL: string;
     SUPER_ADMIN_PASSWORD: string;
@@ -98,6 +102,7 @@ export const env: ENVConfig = {
     // does not push it further out.
     SESSION_DAYS: Number(process.env.SESSION_DAYS) > 0 ? Number(process.env.SESSION_DAYS) : 15,
     LOGIN_OTP_ENABLED: process.env.LOGIN_OTP_ENABLED !== "false",
+    REVIEW_LOGIN_EMAILS: parseReviewEmails(process.env.REVIEW_LOGIN_EMAILS),
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
     SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL as string,
     SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD as string,

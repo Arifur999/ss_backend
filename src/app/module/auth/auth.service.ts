@@ -5,6 +5,7 @@ import { PlanStatus, Role, SubscriptionStatus } from "../../../generated/prisma/
 import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
+import { skipsLoginOtp } from "../../shared/loginOtp.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateUser } from "../../utils/authCache.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
@@ -298,9 +299,11 @@ const loginUser = async (payload: ILoginPayload) => {
 
     // Break-glass: if the mail provider ever goes down, every account would be
     // locked out with no way back in. Setting LOGIN_OTP_ENABLED=false on the
-    // server restores password-only login without needing a code change.
+    // server restores password-only login without needing a code change. And
+    // the accounts listed in REVIEW_LOGIN_EMAILS - the app stores' reviewers,
+    // who cannot read the code - sign in with their password alone.
     // Unverified accounts still have to confirm their email.
-    if (!env.LOGIN_OTP_ENABLED && user.email_verified) {
+    if (skipsLoginOtp({ otpEnabled: env.LOGIN_OTP_ENABLED, reviewEmails: env.REVIEW_LOGIN_EMAILS, email: user.email, emailVerified: user.email_verified })) {
         return issueSession(user);
     }
 
