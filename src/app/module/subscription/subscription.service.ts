@@ -7,7 +7,7 @@ import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateOwnerAccess } from "../../utils/authCache.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { PlatformSettingsService } from "../platformSettings/platformSettings.service.js";
-import { planSelectionFields } from "./planSelection.js";
+import { planSelectionFields, trialRefusal } from "./planSelection.js";
 import { IChoosePlanPayload, ISubmitManualPaymentPayload } from "./subscription.validation.js";
 
 // Returns the subscription plus any payment still awaiting super-admin
@@ -56,13 +56,15 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
 
-    // The free trial can be started exactly once, and NEVER once the owner is
-    // on a paid plan - otherwise clicking "free trial" would wipe out a live
-    // monthly/yearly subscription. Blocked if the trial was already used OR the
-    // owner currently holds a paid plan. Only the super admin's
-    // grant-trial-extension can revive trial access.
-    const hasPaidPlan = existing.plan_type === "monthly" || existing.plan_type === "yearly";
-    if (isTrial && (existing.trial_used || hasPaidPlan)) {
+    // The free trial can be started exactly once, NEVER once the owner is on a
+    // paid plan, and never by an owner the super admin blocked or suspended -
+    // see trialRefusal. Only the super admin's grant-trial-extension can
+    // revive trial access.
+    const refusal = isTrial ? trialRefusal(existing) : null;
+    if (refusal === "locked") {
+        throw new AppError(status.FORBIDDEN, "This account is blocked or suspended. Please contact the super admin.");
+    }
+    if (refusal === "used") {
         throw new AppError(
             status.FORBIDDEN,
             "The free trial isn't available on this account. Please choose the monthly or yearly plan, or ask your super admin to grant a trial extension."
