@@ -43,6 +43,26 @@ export function hasLiveAccess(existing: SubscriptionSnapshot, now: Date) {
     );
 }
 
+export type TrialSnapshot = SubscriptionSnapshot & {
+    status?: string | null;
+    plan_type?: PlanTypeValue | string | null;
+};
+
+/**
+ * Why this owner may not start the free trial, or null when they may.
+ *
+ * "used": it runs once, and never over a paid plan - otherwise clicking the
+ * trial would wipe out a live monthly/yearly subscription.
+ * "locked": never for an owner the super admin blocked or suspended. Starting
+ * the trial writes plan_status "active" and clears blocked_reason, so a banned
+ * sign-up whose trial was unused could lift its own ban.
+ */
+export function trialRefusal(existing: TrialSnapshot): "used" | "locked" | null {
+    if (existing.status === "blocked" || existing.plan_status === "suspended") return "locked";
+    if (existing.trial_used || existing.plan_type === "monthly" || existing.plan_type === "yearly") return "used";
+    return null;
+}
+
 /**
  * The fields a plan selection writes.
  *

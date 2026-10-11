@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hasLiveAccess, planSelectionFields } from "./planSelection.js";
+import { hasLiveAccess, planSelectionFields, trialRefusal } from "./planSelection.js";
 
 // The helper hands back a loose bag of columns; these are the few this file
 // reads out of it.
@@ -68,5 +68,25 @@ describe("choosing a plan", () => {
 
     it("never counts a suspended owner as having access", () => {
         assert.equal(hasLiveAccess({ plan_status: "suspended", expiry_date: tomorrow }, NOW), false);
+    });
+});
+
+describe("who may start the free trial", () => {
+    const fresh = { status: "expired", plan_status: "expired", plan_type: "free_trial", trial_used: false };
+
+    it("lets a new registration start it", () => {
+        assert.equal(trialRefusal(fresh), null);
+    });
+
+    it("runs once, and never over a paid plan", () => {
+        assert.equal(trialRefusal({ ...fresh, trial_used: true }), "used");
+        assert.equal(trialRefusal({ ...fresh, plan_type: "monthly" }), "used");
+        assert.equal(trialRefusal({ ...fresh, plan_type: "yearly", status: "pending" }), "used");
+    });
+
+    it("never lifts a ban: a blocked or suspended sign-up with its trial unused is refused", () => {
+        assert.equal(trialRefusal({ ...fresh, status: "blocked", plan_status: "suspended" }), "locked");
+        assert.equal(trialRefusal({ ...fresh, status: "blocked" }), "locked");
+        assert.equal(trialRefusal({ ...fresh, plan_status: "suspended" }), "locked");
     });
 });
