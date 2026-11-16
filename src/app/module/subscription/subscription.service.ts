@@ -38,12 +38,14 @@ const getMySubscription = async (user: IRequestUser) => {
     };
 };
 
-// Mirrors the old SubscriptionPlans.choosePlan supabase upsert:
-// - free_trial: active immediately for 7 days
-// - yearly: flips the subscription to "pending" and sends the owner to the
-//   manual bKash checkout screen; nothing is charged and no payment row is
-//   created here - that only happens once they actually submit a
-//   transaction id via submitManualPayment() below.
+// What picking a plan does:
+// - free_trial: active immediately, for TRIAL_DAYS, and it is the one plan
+//   that needs no approval.
+// - monthly / yearly: records WHICH plan is being bought (pending_plan_type)
+//   and sends the owner to the manual bKash checkout. Nothing is charged, no
+//   payment row is created, no plan or date is written - the owner's access is
+//   left exactly as it was. That only changes when a super admin approves the
+//   payment they submit via submitManualPayment() below.
 const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     const existing = await prisma.ownerSubscription.findUnique({
         where: { owner_id: user.ownerId },
@@ -56,11 +58,12 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
     const now = new Date();
     const isTrial = payload.plan_type === "free_trial";
 
-    // The free trial can be started exactly once, NEVER once the owner is on a
-    // paid plan, and never by an owner the super admin blocked or suspended -
-    // see trialRefusal. Only the super admin's grant-trial-extension can
-    // revive trial access.
-    const refusal = isTrial ? trialRefusal(existing) : null;
+    // The free trial can be started exactly once, never on top of a plan that
+    // is actually live, and never by an owner the super admin blocked or
+    // suspended - see trialRefusal. Merely having opened a paid checkout does
+    // NOT refuse it: nothing is owned until the super admin approves a payment.
+    // Only the super admin's grant-trial-extension can revive a used trial.
+    const refusal = isTrial ? trialRefusal(existing, now) : null;
     if (refusal === "locked") {
         throw new AppError(status.FORBIDDEN, "This account is blocked or suspended. Please contact the super admin.");
     }
@@ -145,16 +148,23 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
     const existingSub = await prisma.ownerSubscription.findUnique({
         where: { owner_id: user.ownerId },
     });
-    // The plan being paid for: prefer what the checkout sent (renew / switch),
-    // otherwise fall back to the owner's current subscription plan.
+    // The plan being paid for: what the checkout sent (renew / switch), else
+    // what choosePlan recorded when the owner opened the checkout.
+    //
+    // pending_plan_type, NOT plan_type: plan_type is what the owner already
+    // has, so falling back to it would bill a trial owner for whatever plan
+    // their last subscription happened to be rather than the one they just
+    // picked. Yearly remains the last resort, as it was.
     const planType =
         payload.plan_type === "monthly"
             ? "monthly"
             : payload.plan_type === "yearly"
                 ? "yearly"
-                : existingSub?.plan_type === "monthly"
+                : existingSub?.pending_plan_type === "monthly"
                     ? "monthly"
-                    : "yearly";
+                    : existingSub?.pending_plan_type === "yearly"
+                        ? "yearly"
+                        : "yearly";
     const amount = planType === "monthly" ? monthly_price : yearly_price;
 
     const now = new Date();
@@ -183,12 +193,16 @@ const submitManualPayment = async (payload: ISubmitManualPaymentPayload, user: I
             existingSub?.expiry_date != null &&
             existingSub.expiry_date.getTime() > Date.now();
 
+        // Submitting records that a payment is awaiting approval. It does not
+        // write plan_type: the owner still has whatever they had until a super
+        // admin approves this payment, and writing it here is what used to make
+        // the Current Plan page show a plan nobody had paid for.
         if (!activeNow) {
             await tx.ownerSubscription.update({
                 where: { owner_id: user.ownerId },
                 data: {
                     status: SubscriptionStatus.pending,
-                    plan_type: planType,
+                    pending_plan_type: planType,
                     plan_status: PlanStatus.expired,
                 },
             });

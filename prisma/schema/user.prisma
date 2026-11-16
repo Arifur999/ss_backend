@@ -80,6 +80,15 @@ model OwnerSubscription {
   trial_end      DateTime
   active_until   DateTime?
   plan_type      PlanType           @default(free_trial)
+  // Which paid plan the owner is in the middle of buying - set when they open
+  // the checkout, read by submitManualPayment so the payment row carries the
+  // right plan, cleared on approval.
+  //
+  // Separate from plan_type because that column says what the owner HAS. Both
+  // lived in it once, and the Current Plan page then announced a plan nobody
+  // had paid for the moment somebody opened a checkout - and the free trial
+  // was refused on the strength of it. Nothing user-facing reads this.
+  pending_plan_type PlanType?
   plan_status    PlanStatus         @default(active)
   start_date     DateTime           @default(now())
   expiry_date    DateTime
