@@ -6,6 +6,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { skipsLoginOtp } from "../../shared/loginOtp.js";
+import { TRIAL_DAYS } from "../subscription/planSelection.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateUser } from "../../utils/authCache.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
@@ -14,7 +15,9 @@ import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { newSessionExp, sessionTimeLeftMs, tokenUtils } from "../../utils/token.js";
 import { ILoginPayload, IRegisterOwnerPayload } from "./auth.interface.js";
 
-const TRIAL_DAYS = 7;
+// Imported rather than declared again: registration opens a trial window and
+// /choose-plan opens one too, and the two promising different lengths is the
+// kind of thing nobody notices until a customer counts the days.
 
 const addDays = (date: Date, days: number) => {
     const next = new Date(date);
@@ -75,7 +78,7 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
 
     // Registration no longer auto-starts the trial. The owner is created in a
     // "no active plan yet" state and, after verifying their email, lands on
-    // /choose-plan where they explicitly start the 7-day trial (via the
+    // /choose-plan where they explicitly start the free trial (via the
     // free-trial card popup) or pick the yearly plan. Modelled as expired so
     // the frontend's ProtectedRoute sends them to /choose-plan (never a lock
     // screen), and trial_used=false so the trial is still available to start.

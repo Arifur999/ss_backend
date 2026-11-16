@@ -1,6 +1,6 @@
 import z from "zod";
 
-// Plans sold: a 7-day free trial, a monthly plan, and a yearly plan.
+// Plans sold: a free trial (see TRIAL_DAYS), a monthly plan and a yearly plan.
 export const choosePlanZodSchema = z.object({
     plan_type: z.enum(["free_trial", "monthly", "yearly"], "plan_type must be free_trial, monthly or yearly"),
     // Optional contact info submitted from the free-trial card popup, saved

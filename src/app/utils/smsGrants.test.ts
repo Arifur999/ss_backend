@@ -8,8 +8,8 @@ describe("planSmsCredits", () => {
         // Changing one here without changing src/lib/planFeatures.ts in the
         // frontend turns a card into a promise the wallet does not keep.
         assert.equal(SIGNUP_SMS_CREDITS, 10);
-        assert.equal(planSmsCredits("monthly"), 100);
-        assert.equal(planSmsCredits("yearly"), 500);
+        assert.equal(planSmsCredits("monthly"), 50);
+        assert.equal(planSmsCredits("yearly"), 600);
     });
 
     it("gives the free trial no bundle of its own", () => {

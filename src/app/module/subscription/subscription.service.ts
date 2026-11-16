@@ -7,7 +7,7 @@ import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateOwnerAccess } from "../../utils/authCache.js";
 import { checkOwnerSubscriptionExpiry } from "../../utils/subscription.js";
 import { PlatformSettingsService } from "../platformSettings/platformSettings.service.js";
-import { planSelectionFields, trialRefusal } from "./planSelection.js";
+import { TRIAL_DAYS, planSelectionFields, trialRefusal } from "./planSelection.js";
 import { IChoosePlanPayload, ISubmitManualPaymentPayload } from "./subscription.validation.js";
 
 // Returns the subscription plus any payment still awaiting super-admin
@@ -105,7 +105,7 @@ const choosePlan = async (payload: IChoosePlanPayload, user: IRequestUser) => {
         actorEmail: user.email,
         action: isTrial ? "trial_started" : "plan_selected",
         detail: isTrial
-            ? "Started 7-day free trial"
+            ? `Started ${TRIAL_DAYS}-day free trial`
             : "Selected yearly plan - redirected to manual bKash checkout",
     });
 

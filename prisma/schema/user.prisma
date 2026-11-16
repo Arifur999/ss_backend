@@ -148,14 +148,15 @@ model PlatformSetting {
   // Manual bKash payment details shown on the checkout page.
   bkash_number          String  @default("")
   bkash_qr_url          String  @default("")
-  yearly_price          Decimal @default(5780) @db.Decimal(15, 2)
+  yearly_price          Decimal @default(3999) @db.Decimal(15, 2)
   // Struck-through "regular price" shown next to yearly_price on the plans
-  // page so the discount is visible (e.g. ~7188 crossed out -> 5780). Purely
+  // page so the discount is visible (4788, twelve months at the monthly
+  // price, crossed out -> 3999). Purely
   // a marketing display value - never charged, never used in payment math.
-  yearly_original_price Decimal @default(7188) @db.Decimal(15, 2)
+  yearly_original_price Decimal @default(4788) @db.Decimal(15, 2)
   // Monthly plan price (no yearly discount). Charged when an owner picks the
   // monthly plan from the Current Plan / choose-plan cards.
-  monthly_price         Decimal @default(599) @db.Decimal(15, 2)
+  monthly_price         Decimal @default(399) @db.Decimal(15, 2)
 
   // Hotline shown to an owner while their manual payment awaits approval, so
   // they know who to call if activation is taking too long. Editable by the
