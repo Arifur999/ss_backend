@@ -315,7 +315,7 @@ export const READS = {
         "page:purchase.orders",
     ],
     otherIncomes: [
-        "page:supplier.other-income",
+        "page:supplier.other-income", "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:shareholders.dashboard", "page:loans.transactions",
