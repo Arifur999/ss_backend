@@ -356,7 +356,7 @@ export const READS = {
      * book rather than making the owner go and look it up on the report.
      */
     targets: [
-        "page:supplier.dashboard", "page:supplier.targets",
+        "page:supplier.dashboard", "page:supplier.targets", "page:supplier.report",
         "page:reports.monthly-target", "page:reports.purchase-target",
         "page:reports.summary", "page:reports.yearly",
     ],
