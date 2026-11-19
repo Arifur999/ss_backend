@@ -95,9 +95,9 @@ export const LEGACY_MAP: Record<string, string[]> = {
     "Edit Customer": ["page:customers.list", "page:customers.dashboard"],
     "Delete Customer": ["act:customers.delete"],
 
-    "View Supplier": ["page:supplier.dashboard", "page:supplier.report", "page:supplier.list"],
-    "Add Supplier": ["page:supplier.dashboard", "page:supplier.report", "page:supplier.list"],
-    "Edit Supplier": ["page:supplier.dashboard", "page:supplier.report", "page:supplier.list"],
+    "View Supplier": ["page:supplier.dashboard", "page:supplier.report"],
+    "Add Supplier": ["page:supplier.dashboard", "page:supplier.report"],
+    "Edit Supplier": ["page:supplier.dashboard", "page:supplier.report"],
     "Delete Supplier": ["act:supplier.delete"],
 
     "View Employee": ["page:employees.dashboard", "page:employees.list", "page:employees.transactions"],

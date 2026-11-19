@@ -56,10 +56,8 @@ export const PAGE_PERMISSIONS = [
     "page:supplier.dashboard",
     "page:supplier.report",
     "page:supplier.payments",
-    "page:supplier.other-income",
     "page:supplier.ledger",
     "page:supplier.targets",
-    "page:supplier.list",
 
     "page:purchase.orders",
     "page:purchase.drafts",
@@ -214,7 +212,7 @@ export const READS = {
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         // The Suppliers page is here because its book can record a payment,
         // and the account picker in that form needs the account list.
-        "page:supplier.dashboard", "page:supplier.payments", "page:supplier.other-income",
+        "page:supplier.dashboard", "page:supplier.payments", 
         "page:customers.due-received", "page:customers.ledger",
         "page:expenses.overview", "page:expenses.transactions",
         "page:employees.transactions",
@@ -266,7 +264,7 @@ export const READS = {
     purchases: [
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
-        "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", "page:supplier.list",
+        "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", 
         "page:supplier.ledger", "page:supplier.targets",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
     ],
@@ -280,7 +278,7 @@ export const READS = {
      */
     suppliers: [
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments",
-        "page:supplier.other-income", "page:supplier.list", "page:supplier.ledger", "page:supplier.targets",
+        "page:supplier.ledger", "page:supplier.targets",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
         "page:products.list", "page:products.update-price",
@@ -325,7 +323,7 @@ export const READS = {
         // column reads zero, and the Transactions list shows only half of what
         // happened with the supplier, for a manager who can see the rest.
         "page:supplier.dashboard", "page:supplier.payments", "page:supplier.ledger", "page:supplier.targets",
-        "page:supplier.other-income", "page:supplier.report",
+        "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:shareholders.dashboard", "page:loans.transactions",
