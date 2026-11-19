@@ -57,6 +57,7 @@ export const PAGE_PERMISSIONS = [
     "page:supplier.report",
     "page:supplier.payments",
     "page:supplier.other-income",
+    "page:supplier.ledger",
     "page:supplier.list",
 
     "page:purchase.orders",
@@ -263,6 +264,7 @@ export const READS = {
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", "page:supplier.list",
+        "page:supplier.ledger",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
     ],
     /**
@@ -275,7 +277,7 @@ export const READS = {
      */
     suppliers: [
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments",
-        "page:supplier.other-income", "page:supplier.list",
+        "page:supplier.other-income", "page:supplier.list", "page:supplier.ledger",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
         "page:products.list", "page:products.update-price",
@@ -308,7 +310,7 @@ export const READS = {
         "page:reports.monthly-target", "page:reports.purchase-target",
     ],
     supplierPayments: [
-        "page:supplier.payments", "page:supplier.report", "page:supplier.dashboard",
+        "page:supplier.payments", "page:supplier.report", "page:supplier.dashboard", "page:supplier.ledger",
         "page:purchase.ledger", "page:purchase.history",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
@@ -319,7 +321,7 @@ export const READS = {
         // commission is stored as Other Income: without it the Commission
         // column reads zero, and the Transactions list shows only half of what
         // happened with the supplier, for a manager who can see the rest.
-        "page:supplier.dashboard", "page:supplier.payments",
+        "page:supplier.dashboard", "page:supplier.payments", "page:supplier.ledger",
         "page:supplier.other-income", "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
