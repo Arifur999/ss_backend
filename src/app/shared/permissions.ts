@@ -315,7 +315,10 @@ export const READS = {
         "page:purchase.orders",
     ],
     otherIncomes: [
-        "page:supplier.other-income", "page:supplier.report",
+        // The Suppliers page is here because supplier commission is stored as
+        // Other Income: without it the Commission column reads zero for a
+        // manager who can see the rest of the row.
+        "page:supplier.dashboard", "page:supplier.other-income", "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:shareholders.dashboard", "page:loans.transactions",
@@ -342,8 +345,13 @@ export const READS = {
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
     ],
-    /** Read by the target pages AND by the two report pages that chart them. */
+    /**
+     * Read by the target pages AND by the two report pages that chart them -
+     * and by the Suppliers page, which shows one supplier's own target in their
+     * book rather than making the owner go and look it up on the report.
+     */
     targets: [
+        "page:supplier.dashboard",
         "page:reports.monthly-target", "page:reports.purchase-target",
         "page:reports.summary", "page:reports.yearly",
     ],
