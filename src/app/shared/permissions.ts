@@ -315,10 +315,12 @@ export const READS = {
         "page:purchase.orders",
     ],
     otherIncomes: [
-        // The Suppliers page is here because supplier commission is stored as
-        // Other Income: without it the Commission column reads zero for a
-        // manager who can see the rest of the row.
-        "page:supplier.dashboard", "page:supplier.other-income", "page:supplier.report",
+        // The Suppliers and Transactions pages are here because supplier
+        // commission is stored as Other Income: without it the Commission
+        // column reads zero, and the Transactions list shows only half of what
+        // happened with the supplier, for a manager who can see the rest.
+        "page:supplier.dashboard", "page:supplier.payments",
+        "page:supplier.other-income", "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:shareholders.dashboard", "page:loans.transactions",
