@@ -212,7 +212,9 @@ export const READS = {
         "page:balance.overview", "page:balance.transfer", "page:balance.ledger", "page:balance.wallet",
         "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
-        "page:supplier.payments", "page:supplier.other-income",
+        // The Suppliers page is here because its book can record a payment,
+        // and the account picker in that form needs the account list.
+        "page:supplier.dashboard", "page:supplier.payments", "page:supplier.other-income",
         "page:customers.due-received", "page:customers.ledger",
         "page:expenses.overview", "page:expenses.transactions",
         "page:employees.transactions",
