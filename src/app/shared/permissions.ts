@@ -58,6 +58,7 @@ export const PAGE_PERMISSIONS = [
     "page:supplier.payments",
     "page:supplier.other-income",
     "page:supplier.ledger",
+    "page:supplier.targets",
     "page:supplier.list",
 
     "page:purchase.orders",
@@ -264,7 +265,7 @@ export const READS = {
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", "page:supplier.list",
-        "page:supplier.ledger",
+        "page:supplier.ledger", "page:supplier.targets",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
     ],
     /**
@@ -277,7 +278,7 @@ export const READS = {
      */
     suppliers: [
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments",
-        "page:supplier.other-income", "page:supplier.list", "page:supplier.ledger",
+        "page:supplier.other-income", "page:supplier.list", "page:supplier.ledger", "page:supplier.targets",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
         "page:products.list", "page:products.update-price",
@@ -321,7 +322,7 @@ export const READS = {
         // commission is stored as Other Income: without it the Commission
         // column reads zero, and the Transactions list shows only half of what
         // happened with the supplier, for a manager who can see the rest.
-        "page:supplier.dashboard", "page:supplier.payments", "page:supplier.ledger",
+        "page:supplier.dashboard", "page:supplier.payments", "page:supplier.ledger", "page:supplier.targets",
         "page:supplier.other-income", "page:supplier.report",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
@@ -355,7 +356,7 @@ export const READS = {
      * book rather than making the owner go and look it up on the report.
      */
     targets: [
-        "page:supplier.dashboard",
+        "page:supplier.dashboard", "page:supplier.targets",
         "page:reports.monthly-target", "page:reports.purchase-target",
         "page:reports.summary", "page:reports.yearly",
     ],

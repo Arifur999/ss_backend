@@ -90,10 +90,10 @@ describe("the canonical list", () => {
      * repo's transitional business and the frontend has never heard of it.
      */
     it("hashes to the value the frontend also asserts", () => {
-        assert.equal(PERMISSION_FINGERPRINT, "60-e29da45e");
-        assert.equal(PAGE_PERMISSIONS.length, 51);
+        assert.equal(PERMISSION_FINGERPRINT, "61-32c1fad3");
+        assert.equal(PAGE_PERMISSIONS.length, 52);
         assert.equal(DELETE_PERMISSIONS.length, 9);
-        assert.equal(PERMISSIONS.length, 60);
+        assert.equal(PERMISSIONS.length, 61);
     });
 
     it("gives every delete tick a page in its own group", () => {
