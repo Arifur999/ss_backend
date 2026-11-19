@@ -113,6 +113,14 @@ enum LenderType {
   boss
 }
 
+// How a supplier's target commission is worked out when the target is met.
+// none: the target is only a goal, nothing is earned by meeting it.
+enum CommissionRule {
+  none
+  percent
+  fixed
+}
+
 enum IncomeType {
   supplier
   other

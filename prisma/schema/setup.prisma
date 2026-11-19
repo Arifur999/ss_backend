@@ -163,6 +163,14 @@ model PurchaseTarget {
   end_year     Int
   end_month    Int
   total_amount Decimal  @default(0) @db.Decimal(15, 2)
+  // What the supplier pays when this target is met, and how it is worked out.
+  //
+  // A percent rule is per cent OF THE TARGET, not of what was actually
+  // bought. That is what lets the page say "buy 40,000 more to earn 12,000":
+  // a commission computed off the running total would move every time another
+  // bill was entered, and could not be promised in advance.
+  commission_rule  CommissionRule @default(none)
+  commission_value Decimal        @default(0) @db.Decimal(15, 2)
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

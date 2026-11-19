@@ -13,6 +13,11 @@ export const createPurchaseTargetZodSchema = z
         end_year: year("End year"),
         end_month: month("End month"),
         total_amount: z.number("Total amount must be a number").nonnegative("Total amount cannot be negative"),
+        // What the supplier pays for meeting it. "none" is the default and means
+        // the target is a goal with nothing attached, which is what every target
+        // created before this existed is.
+        commission_rule: z.enum(["none", "percent", "fixed"], "Commission rule must be none, percent or fixed").optional(),
+        commission_value: z.number("Commission value must be a number").nonnegative("Commission value cannot be negative").optional(),
     })
     // Checked here rather than on the page alone: a backwards range would make
     // "how many months" negative, and the per-month figure meaningless.
@@ -28,6 +33,11 @@ export const updatePurchaseTargetZodSchema = z.object({
     end_year: year("End year").optional(),
     end_month: month("End month").optional(),
     total_amount: z.number("Total amount must be a number").nonnegative("Total amount cannot be negative").optional(),
+    // What the supplier pays for meeting it. "none" is the default and means
+    // the target is a goal with nothing attached, which is what every target
+    // created before this existed is.
+    commission_rule: z.enum(["none", "percent", "fixed"], "Commission rule must be none, percent or fixed").optional(),
+    commission_value: z.number("Commission value must be a number").nonnegative("Commission value cannot be negative").optional(),
 });
 
 export type ICreatePurchaseTargetPayload = z.infer<typeof createPurchaseTargetZodSchema>;
