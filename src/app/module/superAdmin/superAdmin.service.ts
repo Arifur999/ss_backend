@@ -8,6 +8,7 @@ import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateAuthCaches, invalidateOwnerAccess } from "../../utils/authCache.js";
 import { sendTemplatedEmail } from "../../utils/email.js";
 import { buildPlanGiftCardHtml, planGiftCardSubject } from "../../utils/giftCard.js";
+import { buildTrialExtendedHtml, trialExtendedSubject } from "../../utils/trialExtended.js";
 import { planSmsCredits } from "../../utils/smsGrants.js";
 import { fillMonths, money2, monthWindow, PAID_STATUS, PAID_SUBSCRIPTION_WHERE, toMonthMap } from "../../shared/revenueSeries.js";
 import { IUpdateOwnerSubscriptionPayload, IUpdateSubscriptionPaymentPayload } from "./superAdmin.validation.js";
@@ -102,6 +103,30 @@ const grantTrialExtension = async (ownerId: string, admin: IRequestUser) => {
             blocked_reason: "",
         },
     });
+
+    // Tell the owner. Until now this happened silently: somebody who had run
+    // out, could not get in and had asked for more time was given it without
+    // being told, and found out only by trying the app again.
+    //
+    // Fire-and-forget, like the approval email: a mail provider having a bad
+    // minute must not undo an extension the admin has already granted.
+    const [ownerUser, settings] = await Promise.all([
+        prisma.user.findUnique({ where: { id: ownerId } }),
+        prisma.platformSetting.findFirst().catch(() => null),
+    ]);
+    if (ownerUser?.email) {
+        void sendTemplatedEmail(
+            ownerUser.email,
+            trialExtendedSubject(7),
+            buildTrialExtendedHtml({
+                ownerName: ownerUser.full_name || "",
+                businessName: existing.business_name || ownerUser.full_name || "",
+                daysAdded: 7,
+                newExpiry: newExpiry,
+                supportNumber: settings?.support_number,
+            }),
+        );
+    }
 
     await logAdminActivity({
         ownerId,
