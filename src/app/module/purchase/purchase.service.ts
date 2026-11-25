@@ -155,6 +155,9 @@ type ReceivableItem = {
     product_id: string | null;
     product_name: string;
     received_qty: number;
+    // The order quantity, so a receive can record what was still owed after
+    // it. Every caller loads the whole row, so it is always there.
+    qty: number;
     actual_dp: Prisma.Decimal | number;
     dp_price: Prisma.Decimal | number;
     // Named here because purchaseReceiveCost needs it whenever actual_dp was
@@ -191,6 +194,10 @@ const receiveItemInTx = async (
             condition: payload.condition,
             notes: payload.notes ?? "",
             memo_id: payload.memo_id ?? null,
+            // Frozen here because it cannot be worked out later: the line's
+            // received_qty moves on with the next delivery, and a memo is a
+            // document somebody signed against this number.
+            pending_after: Math.max(0, item.qty - (item.received_qty + payload.received_qty)),
             created_by: user.userId,
         },
     });

@@ -121,6 +121,12 @@ model PurchaseReceive {
   // Product Received page still makes - that page records a single product, not
   // a lorry, so there is nothing for a memo to hold.
   memo_id          String?
+  // What was still owed on this order line AFTER this delivery, as it stood
+  // at the moment it was signed for. Not derivable later: the line's
+  // received_qty moves on with every further delivery, so a memo reprinted
+  // next month would otherwise show today's balance rather than the one the
+  // supplier's driver actually signed against.
+  pending_after    Int?
 
   purchase          Purchase             @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
   purchase_item     PurchaseItem         @relation(fields: [purchase_item_id], references: [id], onDelete: Cascade)
