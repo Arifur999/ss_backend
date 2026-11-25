@@ -9,6 +9,7 @@ import { dateRangeWhere, type ListOptions } from "../../shared/listQuery.js";
 import { buildRecycleItemData, IRecycleMeta } from "../../shared/recycleSnapshot.js";
 import { createReceiveStockBatch } from "../inventory/fifo.helpers.js";
 import { purchaseReceiveCost } from "../../shared/batchCost.js";
+import { memoPrefix, nextMemoNo } from "../../shared/receiveMemoNo.js";
 import { ICreatePurchasePayload, IReceivePurchaseItemPayload, IUpdatePurchasePayload, IAddPurchaseItemPayload } from "./purchase.validation.js";
 
 // Supabase nested selects returned relations under their table names:
@@ -176,7 +177,7 @@ const receiveItemInTx = async (
     tx: Prisma.TransactionClient,
     purchase: { id: string; si_no: string },
     item: ReceivableItem,
-    payload: { receive_date: string; receiver_name?: string; received_qty: number; condition?: IReceivePurchaseItemPayload["condition"]; notes?: string },
+    payload: { receive_date: string; receiver_name?: string; received_qty: number; condition?: IReceivePurchaseItemPayload["condition"]; notes?: string; memo_id?: string },
     user: IRequestUser
 ) => {
     const receiveRow = await tx.purchaseReceive.create({
@@ -189,6 +190,7 @@ const receiveItemInTx = async (
             received_qty: payload.received_qty,
             condition: payload.condition,
             notes: payload.notes ?? "",
+            memo_id: payload.memo_id ?? null,
             created_by: user.userId,
         },
     });
@@ -555,6 +557,80 @@ const setItemReceivedQty = async (itemId: string, newQty: number, user: IRequest
  * level and the sale costing disagreeing with each other permanently. Better to
  * say so and let the operator delete the sale first.
  */
+type ReversibleReceive = {
+    id: string;
+    purchase_id: string;
+    purchase_item_id: string;
+    received_qty: number;
+    purchase_item: { product_id: string | null; product_name: string };
+};
+
+/**
+ * Take one receive back out: stock, batch, item tally, history row, the receive
+ * itself. Inside a caller-supplied transaction; the shipping status is the
+ * caller's job, so deleting a whole memo can refresh each order once.
+ *
+ * Shared by deleteReceive and deleteReceiveMemo. Written once because the two
+ * must stay the same reversal - a second copy of this is how stock ends up
+ * disagreeing with the batches depending on which button was pressed.
+ */
+const reverseReceiveInTx = async (
+    tx: Prisma.TransactionClient,
+    receive: ReversibleReceive,
+    user: IRequestUser,
+    reason: string
+) => {
+    const delta = -receive.received_qty;
+    const productId = receive.purchase_item.product_id;
+
+    const batch = await tx.inventoryBatch.findFirst({
+        where: { purchase_receive_id: receive.id, owner_id: user.ownerId },
+    });
+
+    // consumed = how much of this batch has already gone out on sales.
+    const consumed = batch ? batch.received_qty - batch.remaining_qty : 0;
+    if (consumed > 0) {
+        throw new AppError(
+            status.CONFLICT,
+            `Cannot delete this receive: ${consumed} of the ${receive.received_qty} received have already been sold. Delete or edit those sales first.`
+        );
+    }
+
+    await tx.purchaseItem.update({
+        where: { id: receive.purchase_item_id },
+        data: { received_qty: { increment: delta } },
+    });
+
+    if (productId) {
+        await tx.inventory.updateMany({
+            where: { owner_id: user.ownerId, product_id: productId },
+            data: { available_qty: { increment: delta } },
+        });
+
+        // Nothing was consumed, so the batch has no history worth keeping and
+        // deleting it is exact - no clamp, nothing swallowed.
+        if (batch) {
+            await tx.inventoryBatch.delete({ where: { id: batch.id } });
+        }
+
+        await tx.inventoryHistory.create({
+            data: {
+                owner_id: user.ownerId,
+                product_id: productId,
+                product_name: receive.purchase_item.product_name,
+                change_type: "adjustment",
+                qty_change: delta,
+                reference_id: receive.purchase_id,
+                reference_type: "purchase_receive_delete",
+                notes: reason,
+                created_by: user.userId,
+            },
+        });
+    }
+
+    await tx.purchaseReceive.delete({ where: { id: receive.id } });
+};
+
 const deleteReceive = async (receiveId: string, user: IRequestUser) => {
     const receive = await prisma.purchaseReceive.findFirst({
         where: { id: receiveId, owner_id: user.ownerId },
@@ -565,75 +641,211 @@ const deleteReceive = async (receiveId: string, user: IRequestUser) => {
         throw new AppError(status.NOT_FOUND, "Receive record not found");
     }
 
-    const delta = -receive.received_qty;
-    const productId = receive.purchase_item.product_id;
-
     return prisma.$transaction(async (tx) => {
-        const batch = await tx.inventoryBatch.findFirst({
-            where: { purchase_receive_id: receiveId, owner_id: user.ownerId },
-        });
+        await reverseReceiveInTx(tx, receive, user, "Receive record deleted");
+        return refreshShippingStatus(tx, receive.purchase_id);
+    });
+};
 
-        // consumed = how much of this batch has already gone out on sales.
-        const consumed = batch ? batch.received_qty - batch.remaining_qty : 0;
-        if (consumed > 0) {
+// ---------------------------------------------------------------------------
+// Receive memos
+//
+// One lorry's worth of goods, from one supplier, possibly settling lines on
+// several purchase orders at once. The Pending Products page writes these; the
+// Receive Ledger reads them.
+//
+// Additive to everything that came before: Product Received still receives one
+// line at a time with no memo, and those rows are untouched by any of this.
+// ---------------------------------------------------------------------------
+
+const memoInclude = {
+    purchase_receives: {
+        include: {
+            purchase_item: {
+                select: {
+                    id: true, product_id: true, product_code: true, product_name: true,
+                    qty: true, received_qty: true, actual_dp: true, dp_price: true, discount_pct: true,
+                },
+            },
+            purchase: { select: { id: true, si_no: true, date: true } },
+        },
+        orderBy: { created_at: "asc" },
+    },
+} as const;
+
+const getReceiveMemos = async (user: IRequestUser, options: ListOptions = {}) => {
+    return prisma.purchaseReceiveMemo.findMany({
+        where: { owner_id: user.ownerId, ...dateRangeWhere(options) },
+        include: memoInclude,
+        orderBy: [{ date: "desc" }, { created_at: "desc" }],
+    });
+};
+
+type IReceiveMemoLine = { purchase_item_id: string; qty: number };
+
+export interface ICreateReceiveMemoPayload {
+    date: string;
+    vehicle_no?: string;
+    driver_name?: string;
+    driver_phone?: string;
+    receiver_name: string;
+    receiver_phone?: string;
+    notes?: string;
+    lines: IReceiveMemoLine[];
+}
+
+/**
+ * Record a delivery.
+ *
+ * Every quantity is checked against what is actually still pending on the line
+ * rather than against anything the client sent about it, because the client's
+ * idea of pending is as old as its last refresh: two people receiving the same
+ * lorry would otherwise book the goods twice.
+ *
+ * The supplier is read off the purchase orders, not taken from the request, so
+ * a memo cannot be filed against a supplier who did not send the goods.
+ */
+const createReceiveMemo = async (payload: ICreateReceiveMemoPayload, user: IRequestUser) => {
+    const itemIds = payload.lines.map((line) => line.purchase_item_id);
+    if (new Set(itemIds).size !== itemIds.length) {
+        throw new AppError(status.BAD_REQUEST, "The same order line appears twice in this memo");
+    }
+
+    const items = await prisma.purchaseItem.findMany({
+        where: { id: { in: itemIds }, owner_id: user.ownerId },
+        include: {
+            product: { select: { selling_price: true } },
+            purchase: { select: { id: true, si_no: true, supplier_id: true, supplier_name: true, deleted_at: true } },
+        },
+    });
+
+    if (items.length !== itemIds.length) {
+        throw new AppError(status.NOT_FOUND, "Some of these order lines are not in this workspace");
+    }
+
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const suppliers = [...new Set(items.map((item) => item.purchase.supplier_name))];
+    if (suppliers.length > 1) {
+        throw new AppError(
+            status.BAD_REQUEST,
+            `One memo covers one supplier. These lines come from ${suppliers.join(" and ")}.`
+        );
+    }
+
+    for (const line of payload.lines) {
+        const item = byId.get(line.purchase_item_id)!;
+        if (item.purchase.deleted_at) {
+            throw new AppError(status.BAD_REQUEST, `Purchase ${item.purchase.si_no} has been deleted`);
+        }
+        if (!item.product_id) {
+            throw new AppError(status.BAD_REQUEST, `${item.product_name} is not linked to a product, so it cannot go into stock`);
+        }
+        const pending = item.qty - item.received_qty;
+        if (line.qty > pending) {
             throw new AppError(
-                status.CONFLICT,
-                `Cannot delete this receive: ${consumed} of the ${receive.received_qty} received have already been sold. Delete or edit those sales first.`
+                status.BAD_REQUEST,
+                `${item.product_name}: receiving ${line.qty} but only ${pending} is still pending on ${item.purchase.si_no}`
             );
         }
+    }
 
-        await tx.purchaseItem.update({
-            where: { id: receive.purchase_item_id },
-            data: { received_qty: { increment: delta } },
-        });
+    const first = items[0]!;
+    const date = new Date(payload.date);
 
-        if (productId) {
-            await tx.inventory.updateMany({
-                where: { owner_id: user.ownerId, product_id: productId },
-                data: { available_qty: { increment: delta } },
+    // Two deliveries unloaded at the same moment would read the same highest
+    // number and both try to claim it. The loser of that race is a unique
+    // violation on (owner_id, memo_no), and the honest answer is to look again
+    // and take the next one - not to fail a delivery that really happened.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+            return await prisma.$transaction(async (tx) => {
+                const issued = await tx.purchaseReceiveMemo.findMany({
+                    where: { owner_id: user.ownerId, memo_no: { startsWith: memoPrefix(date) } },
+                    select: { memo_no: true },
+                });
+
+                const memo = await tx.purchaseReceiveMemo.create({
+                    data: {
+                        owner_id: user.ownerId,
+                        memo_no: nextMemoNo(issued.map((row) => row.memo_no), date),
+                        date,
+                        supplier_id: first.purchase.supplier_id,
+                        supplier_name: first.purchase.supplier_name,
+                        vehicle_no: payload.vehicle_no?.trim() ?? "",
+                        driver_name: payload.driver_name?.trim() ?? "",
+                        driver_phone: payload.driver_phone?.trim() ?? "",
+                        receiver_name: payload.receiver_name.trim(),
+                        receiver_phone: payload.receiver_phone?.trim() ?? "",
+                        notes: payload.notes?.trim() ?? "",
+                        created_by: user.userId,
+                    },
+                });
+
+                for (const line of payload.lines) {
+                    const item = byId.get(line.purchase_item_id)!;
+                    await receiveItemInTx(
+                        tx,
+                        item.purchase,
+                        item,
+                        {
+                            receive_date: payload.date,
+                            receiver_name: memo.receiver_name,
+                            received_qty: line.qty,
+                            condition: "good",
+                            notes: memo.memo_no,
+                            memo_id: memo.id,
+                        },
+                        user
+                    );
+                }
+
+                for (const purchaseId of new Set(payload.lines.map((line) => byId.get(line.purchase_item_id)!.purchase.id))) {
+                    await refreshShippingStatus(tx, purchaseId);
+                }
+
+                return tx.purchaseReceiveMemo.findUniqueOrThrow({
+                    where: { id: memo.id },
+                    include: memoInclude,
+                });
             });
+        } catch (error) {
+            const clash = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+            if (!clash || attempt === 4) throw error;
+        }
+    }
 
-            // Nothing was consumed, so the batch has no history worth keeping and
-            // deleting it is exact - no clamp, nothing swallowed.
-            if (batch) {
-                await tx.inventoryBatch.delete({ where: { id: batch.id } });
-            }
+    throw new AppError(status.CONFLICT, "Could not allocate a memo number, please try again");
+};
 
-            await tx.inventoryHistory.create({
-                data: {
-                    owner_id: user.ownerId,
-                    product_id: productId,
-                    product_name: receive.purchase_item.product_name,
-                    change_type: "adjustment",
-                    qty_change: delta,
-                    reference_id: receive.purchase_id,
-                    reference_type: "purchase_receive_delete",
-                    notes: "Receive record deleted",
-                    created_by: user.userId,
-                },
-            });
+/**
+ * Unmake a delivery: every line goes back to pending and out of stock.
+ *
+ * Refuses, line by line, if any of the received goods have already been sold -
+ * the same rule as deleting a single receive, for the same reason. The whole
+ * memo is one transaction, so a memo whose third line has been sold is left
+ * entirely alone rather than half reversed.
+ */
+const deleteReceiveMemo = async (memoId: string, user: IRequestUser) => {
+    const memo = await prisma.purchaseReceiveMemo.findFirst({
+        where: { id: memoId, owner_id: user.ownerId },
+        include: { purchase_receives: { include: { purchase_item: true } } },
+    });
+
+    if (!memo) {
+        throw new AppError(status.NOT_FOUND, "Receive memo not found");
+    }
+
+    return prisma.$transaction(async (tx) => {
+        for (const receive of memo.purchase_receives) {
+            await reverseReceiveInTx(tx, receive, user, `Receive memo ${memo.memo_no} deleted`);
         }
 
-        await tx.purchaseReceive.delete({ where: { id: receiveId } });
+        for (const purchaseId of new Set(memo.purchase_receives.map((row) => row.purchase_id))) {
+            await refreshShippingStatus(tx, purchaseId);
+        }
 
-        const allItems = await tx.purchaseItem.findMany({
-            where: { purchase_id: receive.purchase_id },
-            select: { qty: true, received_qty: true },
-        });
-        const allReceived = allItems.every((row) => row.received_qty >= row.qty);
-        const someReceived = allItems.some((row) => row.received_qty > 0);
-
-        return tx.purchase.update({
-            where: { id: receive.purchase_id },
-            data: {
-                shipping_status: allReceived
-                    ? ShippingStatus.received
-                    : someReceived
-                        ? ShippingStatus.partial
-                        : ShippingStatus.pending,
-            },
-            include: purchaseInclude,
-        });
+        await tx.purchaseReceiveMemo.delete({ where: { id: memoId } });
+        return { id: memo.id, memo_no: memo.memo_no };
     });
 };
 
@@ -827,6 +1039,9 @@ export const PurchaseService = {
     receiveAllPurchaseItems,
     updateReceive,
     deleteReceive,
+    getReceiveMemos,
+    createReceiveMemo,
+    deleteReceiveMemo,
     setItemReceivedQty,
     updatePurchaseItem,
     addPurchaseItem,
