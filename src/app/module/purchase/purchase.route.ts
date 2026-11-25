@@ -4,7 +4,7 @@ import { checkAuth } from "../../middleware/checkAuth.js";
 import { checkSubscription } from "../../middleware/checkSubscription.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import { PurchaseController } from "./purchase.controller.js";
-import { addPurchaseItemZodSchema, createPurchaseZodSchema, receiveAllZodSchema, receivePurchaseItemZodSchema, setItemReceivedQtyZodSchema, updatePurchaseItemZodSchema, updatePurchaseZodSchema, updateReceiveZodSchema } from "./purchase.validation.js";
+import { addPurchaseItemZodSchema, createPurchaseZodSchema, createReceiveMemoZodSchema, receiveAllZodSchema, receivePurchaseItemZodSchema, setItemReceivedQtyZodSchema, updatePurchaseItemZodSchema, updatePurchaseZodSchema, updateReceiveZodSchema } from "./purchase.validation.js";
 import { requirePermission } from "../../middleware/requirePermission.js";
 import { READS } from "../../shared/permissions.js";
 
@@ -14,6 +14,11 @@ router.get("/", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubsc
 router.post("/", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.orders"), validateRequest(createPurchaseZodSchema), PurchaseController.createPurchase);
 router.patch("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.received"), validateRequest(updateReceiveZodSchema), PurchaseController.updateReceive);
 router.delete("/receives/:receiveId", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.received"), PurchaseController.deleteReceive);
+// Before every "/:id" route below it: Express takes the first match, and
+// "/receive-memos" would otherwise be read as a purchase id.
+router.get("/receive-memos", checkAuth(Role.owner, Role.manager, Role.accountant), checkSubscription, requirePermission(...READS.purchaseReceiveMemos), PurchaseController.getReceiveMemos);
+router.post("/receive-memos", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.pending"), validateRequest(createReceiveMemoZodSchema), PurchaseController.createReceiveMemo);
+router.delete("/receive-memos/:memoId", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.receiveLedger"), PurchaseController.deleteReceiveMemo);
 router.patch("/items/:itemId/received-qty", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.received"), validateRequest(setItemReceivedQtyZodSchema), PurchaseController.setItemReceivedQty);
 router.patch("/items/:itemId", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("page:purchase.orders", "page:purchase.drafts"), validateRequest(updatePurchaseItemZodSchema), PurchaseController.updatePurchaseItem);
 router.delete("/items/:itemId", checkAuth(Role.owner, Role.manager), checkSubscription, requirePermission("act:purchase.delete"), PurchaseController.deletePurchaseItem);

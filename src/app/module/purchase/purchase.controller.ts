@@ -150,6 +150,37 @@ const deletePurchaseItem = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getReceiveMemos = catchAsync(async (req: Request, res: Response) => {
+    const options = parseListOptions(req.query as Record<string, unknown>);
+    const result = await PurchaseService.getReceiveMemos(req.user as IRequestUser, options);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Receive memos retrieved successfully",
+        data: result,
+    });
+});
+
+const createReceiveMemo = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.createReceiveMemo(req.body, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.CREATED,
+        message: "Receive memo saved successfully",
+        data: result,
+    });
+});
+
+const deleteReceiveMemo = catchAsync(async (req: Request, res: Response) => {
+    const result = await PurchaseService.deleteReceiveMemo(req.params.memoId as string, req.user as IRequestUser);
+    sendResponse(res, {
+        success: true,
+        httpStatus: status.OK,
+        message: "Receive memo deleted successfully",
+        data: result,
+    });
+});
+
 export const PurchaseController = {
     getAllPurchases,
     createPurchase,
@@ -158,6 +189,9 @@ export const PurchaseController = {
     receiveAllPurchaseItems,
     updateReceive,
     deleteReceive,
+    getReceiveMemos,
+    createReceiveMemo,
+    deleteReceiveMemo,
     setItemReceivedQty,
     updatePurchaseItem,
     addPurchaseItem,

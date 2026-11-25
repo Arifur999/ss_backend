@@ -126,3 +126,26 @@ export const receiveAllZodSchema = z.object({
 });
 
 export type IReceiveAllPayload = z.infer<typeof receiveAllZodSchema>;
+
+/**
+ * A receive memo: one delivery, one supplier, one or more order lines.
+ *
+ * No supplier field. The supplier is whoever the purchase orders behind these
+ * lines belong to, and the service reads it from there - a memo must not be
+ * fileable against a company that did not send the goods.
+ */
+export const createReceiveMemoZodSchema = z.object({
+    date: z.string("Date must be string (YYYY-MM-DD)").min(1, "Receiving date is required"),
+    vehicle_no: z.string("Vehicle no must be string").optional(),
+    driver_name: z.string("Driver name must be string").optional(),
+    driver_phone: z.string("Driver phone must be string").optional(),
+    receiver_name: z.string("Receiver name must be string").min(1, "Enter who received the products"),
+    receiver_phone: z.string("Receiver phone must be string").optional(),
+    notes: z.string("Notes must be string").optional(),
+    lines: z.array(z.object({
+        purchase_item_id: z.uuid("Purchase item id must be a valid UUID"),
+        qty: z.number("Qty must be a number").int().positive("Receive quantity must be more than zero"),
+    })).min(1, "Add at least one product"),
+});
+
+export type ICreateReceiveMemoPayload = z.infer<typeof createReceiveMemoZodSchema>;
