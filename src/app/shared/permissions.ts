@@ -62,6 +62,8 @@ export const PAGE_PERMISSIONS = [
     "page:purchase.orders",
     "page:purchase.drafts",
     "page:purchase.ledger",
+    "page:purchase.pending",
+    "page:purchase.receiveLedger",
     "page:purchase.received",
     "page:purchase.history",
 
@@ -264,6 +266,7 @@ export const READS = {
     purchases: [
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
+        "page:purchase.pending", "page:purchase.receiveLedger",
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", 
         "page:supplier.ledger", "page:supplier.targets",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
@@ -281,6 +284,7 @@ export const READS = {
         "page:supplier.ledger", "page:supplier.targets",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         "page:purchase.received", "page:purchase.history",
+        "page:purchase.pending", "page:purchase.receiveLedger",
         "page:products.list", "page:products.update-price",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
         "page:reports.summary", "page:reports.yearly", "page:reports.purchase-target",
@@ -344,7 +348,16 @@ export const READS = {
         "page:employees.dashboard", "page:employees.list",
         "page:employees.transactions", "page:employees.attendance",
         "page:damage.receive", "page:customers.due-received", "page:marketing.campaign",
+        // Pending Products names the receiver from the staff list rather than
+        // letting it be typed, so the memo carries a person who exists.
+        "page:purchase.pending",
     ],
+    /**
+     * Receive memos - one delivery each, read only by the ledger that lists
+     * them. Pending Products writes one and then goes back to showing what is
+     * still outstanding; it never reads the book.
+     */
+    purchaseReceiveMemos: ["page:purchase.receiveLedger"],
     salaryTransactions: [
         "page:employees.transactions", "page:employees.dashboard",
         "page:balance.overview", "page:balance.ledger",
