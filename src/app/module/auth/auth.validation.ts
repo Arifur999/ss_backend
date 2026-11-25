@@ -1,10 +1,21 @@
 import z from "zod";
 import { passwordSchema } from "../../utils/password.js";
+import { BD_PHONE_MESSAGE, normalizeBdPhone } from "../../shared/bdPhone.js";
 
 export const registerOwnerZodSchema = z.object({
     fullName: z.string("Full name must be string").min(2, "Full name must be at least 2 characters").max(100, "Full name must be at most 100 characters"),
     businessName: z.string("Business name must be string").min(2, "Business name must be at least 2 characters").max(150, "Business name must be at most 150 characters"),
-    phone: z.string("Phone must be string").min(6, "Phone must be at least 6 characters").max(20, "Phone must be at most 20 characters"),
+    /**
+     * Eleven digits, and stored that way whatever the owner typed.
+     *
+     * "At least 6 characters" is what a length check looks like when nobody
+     * has decided what a phone number is: ten digits registered accounts, and
+     * a workspace whose owner cannot be telephoned cannot be supported,
+     * chased for a renewal, or shown to be real.
+     */
+    phone: z.string("Phone must be string")
+        .transform((value) => normalizeBdPhone(value))
+        .refine((value) => value !== "", BD_PHONE_MESSAGE),
     email: z.email("Email must be a valid email address"),
     password: passwordSchema(),
     address: z.string("Address must be string").optional(),
