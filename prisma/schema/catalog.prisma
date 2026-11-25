@@ -116,16 +116,59 @@ model PurchaseReceive {
   notes            String           @default("")
   created_by       String?
   created_at       DateTime         @default(now())
+  // The delivery this line came in on, when it was recorded as one. Null for
+  // every receive made before memos existed, and for the one-line receives the
+  // Product Received page still makes - that page records a single product, not
+  // a lorry, so there is nothing for a memo to hold.
+  memo_id          String?
 
-  purchase          Purchase         @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
-  purchase_item     PurchaseItem     @relation(fields: [purchase_item_id], references: [id], onDelete: Cascade)
+  purchase          Purchase             @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  purchase_item     PurchaseItem         @relation(fields: [purchase_item_id], references: [id], onDelete: Cascade)
+  memo              PurchaseReceiveMemo? @relation(fields: [memo_id], references: [id], onDelete: SetNull)
   inventory_batches InventoryBatch[]
 
   @@index([owner_id])
   @@index([purchase_id])
   // Joined per item by the stock aggregate and the nested receive include.
   @@index([purchase_item_id])
+  @@index([memo_id])
   @@map("purchase_receives")
+}
+
+/// One delivery: a lorry arrived, somebody counted what came off it, and those
+/// lines went into stock together.
+///
+/// PurchaseReceive is per product and always has been; this is the paper that
+/// ties a set of them into one event, with the vehicle, the driver and who
+/// signed for it. The Receive Ledger lists these, and deleting one takes its
+/// products back out of stock.
+///
+/// A memo may span several purchase orders, which is why it has no purchase_id:
+/// one lorry from one supplier routinely carries the remainder of three
+/// different orders. The supplier is the thing all its lines share.
+model PurchaseReceiveMemo {
+  id             String   @id @default(uuid())
+  owner_id       String
+  memo_no        String
+  date           DateTime @default(now()) @db.Date
+  supplier_id    String?
+  supplier_name  String
+  vehicle_no     String   @default("")
+  driver_name    String   @default("")
+  driver_phone   String   @default("")
+  receiver_name  String
+  receiver_phone String   @default("")
+  notes          String   @default("")
+  created_by     String?
+  created_at     DateTime @default(now())
+
+  supplier          Supplier?         @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  purchase_receives PurchaseReceive[]
+
+  @@unique([owner_id, memo_no])
+  @@index([owner_id])
+  @@index([owner_id, date(sort: Desc)])
+  @@map("purchase_receive_memos")
 }
 
 model SupplierPayment {

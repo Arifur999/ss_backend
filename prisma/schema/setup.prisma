@@ -87,6 +87,7 @@ model Supplier {
   other_incomes     OtherIncome[]
   purchase_targets  PurchaseTarget[]
   damage_entries    DamageEntry[]
+  receive_memos     PurchaseReceiveMemo[]
 
   @@index([owner_id])
   @@map("suppliers")
