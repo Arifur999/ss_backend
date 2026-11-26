@@ -114,7 +114,7 @@ describe("migratePermissionList", () => {
         assert.deepEqual(out, [
             ALWAYS_GRANTED,
             "page:balance.overview", "page:balance.ledger", "page:balance.wallet",
-            "page:sales.ledger", "page:sales.history",
+            "page:sales.ledger",
             "page:reports.summary", "page:reports.yearly", "page:reports.monthly-target", "page:reports.purchase-target",
         ]);
     });
@@ -140,7 +140,7 @@ describe("migratePermissionList", () => {
         assert.deepEqual(out, [
             ALWAYS_GRANTED,
             "page:products.list",
-            "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
+            "page:sales.new", "page:sales.drafts", "page:sales.ledger",
             "page:customers.dashboard", "page:customers.list", "page:customers.due-received", "page:customers.ledger",
         ]);
     });

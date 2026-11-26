@@ -54,8 +54,8 @@ export const ALWAYS_GRANTED = "page:dashboard.overview";
  */
 export const LEGACY_MAP: Record<string, string[]> = {
     // ---- Sales -------------------------------------------------------------
-    "View Sales": ["page:sales.ledger", "page:sales.history"],
-    "Edit Sale": ["page:sales.ledger", "page:sales.history"],
+    "View Sales": ["page:sales.ledger"],
+    "Edit Sale": ["page:sales.ledger"],
     "New Sale": ["page:sales.new", "page:sales.drafts"],
     "Delete Sale": ["act:sales.delete"],
     "Discount": [],

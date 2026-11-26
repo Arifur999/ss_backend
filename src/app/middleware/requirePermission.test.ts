@@ -92,11 +92,11 @@ describe("requirePermission", () => {
         // "Ask the owner to enable: page:sales.ledger" is a stack trace pointed at
         // a colleague. The box and tick they need to ask for is the difference
         // between one click and a bug report.
-        const outcome = run(staff(["page:customers.list"]), "page:sales.ledger", "page:sales.history");
+        const outcome = run(staff(["page:customers.list"]), "page:sales.ledger", "page:sales.new");
         assert.equal(outcome.ok, false);
         if (!outcome.ok) {
             assert.equal(outcome.status, 403);
-            assert.match(outcome.message, /Sales - Ledger or Sales - History/);
+            assert.match(outcome.message, /Sales - Ledger or Sales - New/);
             assert.ok(!outcome.message.includes("page:"), "the raw stored name leaked into the message");
         }
     });

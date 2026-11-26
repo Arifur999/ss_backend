@@ -55,8 +55,8 @@ describe("sanitizePermissions", () => {
 
     it("keeps a delete tick that sits behind a page from the same group", () => {
         assert.deepEqual(
-            sanitizePermissions(["page:sales.history", "act:sales.delete"]),
-            ["page:sales.history", "act:sales.delete"]
+            sanitizePermissions(["page:sales.ledger", "act:sales.delete"]),
+            ["page:sales.ledger", "act:sales.delete"]
         );
     });
 
@@ -90,10 +90,10 @@ describe("the canonical list", () => {
      * repo's transitional business and the frontend has never heard of it.
      */
     it("hashes to the value the frontend also asserts", () => {
-        assert.equal(PERMISSION_FINGERPRINT, "59-17a77c71");
-        assert.equal(PAGE_PERMISSIONS.length, 50);
+        assert.equal(PERMISSION_FINGERPRINT, "58-c6a3293c");
+        assert.equal(PAGE_PERMISSIONS.length, 49);
         assert.equal(DELETE_PERMISSIONS.length, 9);
-        assert.equal(PERMISSIONS.length, 59);
+        assert.equal(PERMISSIONS.length, 58);
     });
 
     it("gives every delete tick a page in its own group", () => {
@@ -184,8 +184,8 @@ describe("permissionLabel", () => {
 
     it("spells a whole list for the 403, deduped", () => {
         assert.equal(
-            describePermissions(["page:sales.ledger", "page:sales.history"]),
-            "Sales - Ledger or Sales - History"
+            describePermissions(["page:sales.ledger", "page:sales.new"]),
+            "Sales - Ledger or Sales - New"
         );
         assert.equal(describePermissions(["act:sales.delete", "act:sales.delete"]), "Sales - delete");
     });

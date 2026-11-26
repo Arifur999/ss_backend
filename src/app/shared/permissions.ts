@@ -75,7 +75,6 @@ export const PAGE_PERMISSIONS = [
     "page:sales.new",
     "page:sales.drafts",
     "page:sales.ledger",
-    "page:sales.history",
 
     "page:customers.dashboard",
     "page:customers.list",
@@ -208,7 +207,7 @@ export const READS = {
     /** Sixteen pages: every screen with a payment-method dropdown. */
     accounts: [
         "page:balance.overview", "page:balance.transfer", "page:balance.ledger", "page:balance.wallet",
-        "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
+        "page:sales.new", "page:sales.drafts", "page:sales.ledger",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
         // The Suppliers page is here because its book can record a payment,
         // and the account picker in that form needs the account list.
@@ -237,7 +236,7 @@ export const READS = {
     products: [
         "page:products.list", "page:products.update-price",
         "page:inventory.stock",
-        "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
+        "page:sales.new", "page:sales.drafts", "page:sales.ledger",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.pending",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
         "page:reports.summary", "page:reports.yearly",
@@ -248,14 +247,14 @@ export const READS = {
         "page:reports.summary", "page:reports.yearly",
     ],
     salePayments: [
-        "page:sales.ledger", "page:sales.history", "page:sales.new",
+        "page:sales.ledger", "page:sales.new",
         "page:customers.due-received", "page:customers.ledger", "page:customers.dashboard",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:customers.list",
     ],
     sales: [
-        "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
+        "page:sales.new", "page:sales.drafts", "page:sales.ledger",
         "page:customers.dashboard", "page:customers.ledger", "page:customers.due-received",
         "page:reports.summary", "page:reports.yearly",
         "page:reports.monthly-target", "page:reports.purchase-target",
@@ -289,13 +288,13 @@ export const READS = {
     customers: [
         "page:customers.dashboard", "page:customers.list",
         "page:customers.due-received", "page:customers.ledger",
-        "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
+        "page:sales.new", "page:sales.drafts", "page:sales.ledger",
         "page:marketing.campaign",
         "page:reports.summary", "page:reports.yearly",
     ],
     customerPayments: [
         "page:customers.due-received", "page:customers.ledger", "page:customers.dashboard",
-        "page:sales.ledger", "page:sales.history",
+        "page:sales.ledger",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:sales.new", "page:customers.list",
