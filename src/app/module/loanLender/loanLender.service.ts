@@ -53,10 +53,12 @@ const getAllLenders = async (user: IRequestUser) => {
  * Three cases, and they are not the same: absent means leave it alone, null
  * means clear it, a string means set it.
  */
-const withParsedDates = <T extends { opening_date?: string | null }>(payload: T) => {
-    const { opening_date, ...rest } = payload;
-    if (opening_date === undefined) return rest;
-    return { ...rest, opening_date: opening_date ? new Date(opening_date) : null };
+const withParsedDates = <T extends { opening_date?: string | null; loan_date?: string | null }>(payload: T) => {
+    const { opening_date, loan_date, ...rest } = payload;
+    const out: Record<string, unknown> = { ...rest };
+    if (opening_date !== undefined) out.opening_date = opening_date ? new Date(opening_date) : null;
+    if (loan_date !== undefined) out.loan_date = loan_date ? new Date(loan_date) : null;
+    return out as Omit<T, "opening_date" | "loan_date"> & { opening_date?: Date | null; loan_date?: Date | null };
 };
 
 const createLender = async (payload: ICreateLoanLenderPayload, user: IRequestUser) => {

@@ -64,6 +64,30 @@ model LoanLender {
   /// the statement still treats the opening balance as coming before every
   /// transaction, which is what "opening" means.
   opening_date    DateTime?  @db.Date
+  /// Which way the money went: "taken" (I borrowed - dena) or "given" (I lent
+  /// - pawna).
+  ///
+  /// Plain text rather than a Postgres enum, the same choice and the same
+  /// reason as Loan.payment_category: extending an enum needs a hand-written
+  /// ALTER TYPE, and this is a two-word fact that will not grow.
+  ///
+  /// It was derivable from the sign of opening_balance and no longer is: an
+  /// account opened at zero and used only for new borrowing had no sign to
+  /// read, so every loan page had to guess.
+  direction       String     @default("taken")
+  /// The terms of the loan, as the Bank / Person page records them.
+  ///
+  /// loan_amount is what was borrowed, or - for a loan that started before
+  /// this software did - what was still owed on the day it was entered, which
+  /// is the same figure opening_balance holds and what the form asks for.
+  loan_date       DateTime?  @db.Date
+  loan_amount     Decimal    @default(0) @db.Decimal(15, 2)
+  /// Per cent per year. Display only: nothing accrues interest automatically,
+  /// because what a shop actually pays is whatever the bank's slip says.
+  interest_rate   Decimal    @default(0) @db.Decimal(6, 2)
+  /// The instalment. Zero where there is no fixed one - profit-only loans are
+  /// common here - and the dashboard then has nothing to say is due.
+  monthly_amount  Decimal    @default(0) @db.Decimal(15, 2)
   notes           String     @default("")
   is_active       Boolean    @default(true)
   deleted_at      DateTime?

@@ -111,6 +111,9 @@ enum LenderType {
   bank
   person
   boss
+  // Microfinance. A shop here borrows from an NGO as often as from a bank,
+  // and calling that "person" put it on the wrong row of every loan summary.
+  ngo
 }
 
 // How a supplier's target commission is worked out when the target is met.
