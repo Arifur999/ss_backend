@@ -61,11 +61,13 @@ export const LEGACY_MAP: Record<string, string[]> = {
     "Discount": [],
 
     // ---- Purchase ----------------------------------------------------------
-    "View Purchase": ["page:purchase.ledger", "page:purchase.history"],
+    "View Purchase": ["page:purchase.ledger"],
     "Add Purchase": ["page:purchase.orders", "page:purchase.drafts"],
     "Edit Purchase": ["page:purchase.orders", "page:purchase.drafts"],
     "Delete Purchase": ["act:purchase.delete"],
-    "Receive Stock": ["page:purchase.received"],
+    // Receiving moved from the Product Received page to Pending Products,
+    // where a delivery is recorded as one memo. Same job, new tick.
+    "Receive Stock": ["page:purchase.pending", "page:purchase.receiveLedger"],
 
     // ---- Damage ------------------------------------------------------------
     "View Damage": ["page:damage.dashboard", "page:damage.entries", "page:damage.transactions"],

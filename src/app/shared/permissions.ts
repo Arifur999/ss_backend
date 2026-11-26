@@ -64,8 +64,6 @@ export const PAGE_PERMISSIONS = [
     "page:purchase.ledger",
     "page:purchase.pending",
     "page:purchase.receiveLedger",
-    "page:purchase.received",
-    "page:purchase.history",
 
     "page:inventory.stock",
 
@@ -231,7 +229,7 @@ export const READS = {
         "page:inventory.stock",
         "page:products.list", "page:products.update-price",
         "page:sales.new", "page:sales.drafts",
-        "page:purchase.orders", "page:purchase.received",
+        "page:purchase.orders", "page:purchase.pending",
         "page:damage.entries", "page:damage.receive",
         "page:reports.summary", "page:reports.yearly",
         "page:sales.ledger",
@@ -240,7 +238,7 @@ export const READS = {
         "page:products.list", "page:products.update-price",
         "page:inventory.stock",
         "page:sales.new", "page:sales.drafts", "page:sales.ledger", "page:sales.history",
-        "page:purchase.orders", "page:purchase.drafts", "page:purchase.received", "page:purchase.history",
+        "page:purchase.orders", "page:purchase.drafts", "page:purchase.pending",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
         "page:reports.summary", "page:reports.yearly",
         "page:purchase.ledger",
@@ -265,7 +263,6 @@ export const READS = {
     ],
     purchases: [
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
-        "page:purchase.received", "page:purchase.history",
         "page:purchase.pending", "page:purchase.receiveLedger",
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments", 
         "page:supplier.ledger", "page:supplier.targets",
@@ -283,7 +280,6 @@ export const READS = {
         "page:supplier.dashboard", "page:supplier.report", "page:supplier.payments",
         "page:supplier.ledger", "page:supplier.targets",
         "page:purchase.orders", "page:purchase.drafts", "page:purchase.ledger",
-        "page:purchase.received", "page:purchase.history",
         "page:purchase.pending", "page:purchase.receiveLedger",
         "page:products.list", "page:products.update-price",
         "page:damage.entries", "page:damage.receive", "page:damage.transactions",
@@ -316,7 +312,7 @@ export const READS = {
     ],
     supplierPayments: [
         "page:supplier.payments", "page:supplier.report", "page:supplier.dashboard", "page:supplier.ledger",
-        "page:purchase.ledger", "page:purchase.history",
+        "page:purchase.ledger",
         "page:balance.overview", "page:balance.ledger",
         "page:reports.summary", "page:reports.yearly",
         "page:purchase.orders",

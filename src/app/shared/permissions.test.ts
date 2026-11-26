@@ -90,10 +90,10 @@ describe("the canonical list", () => {
      * repo's transitional business and the frontend has never heard of it.
      */
     it("hashes to the value the frontend also asserts", () => {
-        assert.equal(PERMISSION_FINGERPRINT, "61-dd87899e");
-        assert.equal(PAGE_PERMISSIONS.length, 52);
+        assert.equal(PERMISSION_FINGERPRINT, "59-17a77c71");
+        assert.equal(PAGE_PERMISSIONS.length, 50);
         assert.equal(DELETE_PERMISSIONS.length, 9);
-        assert.equal(PERMISSIONS.length, 61);
+        assert.equal(PERMISSIONS.length, 59);
     });
 
     it("gives every delete tick a page in its own group", () => {
@@ -170,7 +170,7 @@ describe("READS", () => {
 describe("permissionLabel", () => {
     it("names a page the way the Permissions screen does", () => {
         assert.equal(permissionLabel("page:sales.ledger"), "Sales - Ledger");
-        assert.equal(permissionLabel("page:purchase.received"), "Purchase - Received");
+        assert.equal(permissionLabel("page:purchase.pending"), "Purchase - Pending");
         assert.equal(permissionLabel("page:customers.due-received"), "Customers - Due Received");
     });
 
