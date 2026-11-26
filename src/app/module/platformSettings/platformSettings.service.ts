@@ -4,6 +4,7 @@ import { DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SUBJECT } from "../../utils/def
 import { renderTemplate, sendTemplatedEmail } from "../../utils/email.js";
 import { buildPlanGiftCardHtml, planGiftCardSubject } from "../../utils/giftCard.js";
 import { renewUrl } from "../../utils/subscriptionReminders.js";
+import { banglaPlanLabel, formatBanglaDate, toBanglaDigits } from "../../shared/banglaFormat.js";
 import { IUpdatePlatformSettingsPayload } from "./platformSettings.validation.js";
 
 // This table only ever has one row. Every read/write goes through this
@@ -71,9 +72,9 @@ const sendTestReminder = async (admin: IRequestUser) => {
     const vars = {
         name: admin.name || "Owner",
         business_name: "Sample Business",
-        days_left: 7,
-        expiry_date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-        plan: "Yearly",
+        days_left: toBanglaDigits(7),
+        expiry_date: formatBanglaDate(new Date()),
+        plan: banglaPlanLabel("yearly"),
         renew_url: renewUrl(),
     };
 

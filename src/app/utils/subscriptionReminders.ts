@@ -2,6 +2,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../lib/prisma.js";
 import { renderTemplate, sendTemplatedEmail } from "./email.js";
+import { banglaPlanLabel, formatBanglaDate, toBanglaDigits } from "../shared/banglaFormat.js";
 
 // Where the email's "Payment Now" button sends the owner - straight to the
 // plan/payment page. FRONTEND_URL may be a comma-separated list (www + bare);
@@ -31,6 +32,8 @@ const daysUntil = (target: Date, now: Date) => {
     return Math.ceil((target.getTime() - now.getTime()) / msPerDay);
 };
 
+// Kept for any template still written in English by a super admin; the
+// default one uses the Bangla variables below.
 const formatDate = (date: Date) =>
     date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -59,12 +62,18 @@ export const sendExpiryReminders = async () => {
         const settings = await prisma.platformSetting.findFirst();
         if (!settings) continue; // Not configured yet - nothing to send.
 
+        // Bangla numerals and a Bangla month, because the default template is
+        // in Bangla and "expires on 07 Dec 2026, 15 days from now" in the
+        // middle of a Bangla sentence reads like two emails spliced together.
+        //
+        // plan is a word, not the column value: a customer on a trial used to
+        // be told their "free_trial plan" was expiring.
         const vars = {
             name: subscription.owner.full_name || "Owner",
             business_name: subscription.business_name || subscription.owner.full_name || "your business",
-            days_left: daysLeft,
-            expiry_date: formatDate(subscription.expiry_date),
-            plan: subscription.plan_type,
+            days_left: toBanglaDigits(daysLeft),
+            expiry_date: formatBanglaDate(subscription.expiry_date) || formatDate(subscription.expiry_date),
+            plan: banglaPlanLabel(subscription.plan_type),
             renew_url: renewUrl(),
         };
 
