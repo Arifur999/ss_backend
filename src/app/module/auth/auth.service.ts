@@ -6,7 +6,7 @@ import AppError from "../../errorHelpers/AppError.js";
 import { IRequestUser } from "../../interfaces/requestUser.interface.js";
 import { prisma } from "../../lib/prisma.js";
 import { skipsLoginOtp } from "../../shared/loginOtp.js";
-import { TRIAL_DAYS } from "../subscription/planSelection.js";
+import { TRIAL_DAYS, freeTrialFields } from "../subscription/planSelection.js";
 import { logAdminActivity } from "../../utils/activityLog.js";
 import { invalidateUser } from "../../utils/authCache.js";
 import { OTP_PURPOSE_RESET_PASSWORD, otpUtils } from "../../utils/otp.js";
@@ -76,12 +76,20 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
     const hashedPassword = await bcrypt.hash(payload.password, 10);
     const registeredAt = new Date();
 
-    // Registration no longer auto-starts the trial. The owner is created in a
-    // "no active plan yet" state and, after verifying their email, lands on
-    // /choose-plan where they explicitly start the free trial (via the
-    // free-trial card popup) or pick the yearly plan. Modelled as expired so
-    // the frontend's ProtectedRoute sends them to /choose-plan (never a lock
-    // screen), and trial_used=false so the trial is still available to start.
+    // Registration starts the free trial. Signing up IS choosing it: the
+    // owner has given their business name and verified an email address, and
+    // asking them to press one more card before the software does anything
+    // was a step that only ever lost people.
+    //
+    // It was the other way round, and the cost was not theoretical. An owner
+    // who registered and did not notice the plan page had plan_status
+    // "expired" from their first second, so every screen called the account
+    // expired and hasActiveOwnerAccess refused every request - a workspace
+    // nobody could use and nobody had done anything wrong in.
+    //
+    // planSelectionFields is the same function the free-trial card calls, so
+    // registering and pressing that card cannot write different things. The
+    // existing snapshot is {} because there is nothing to carry over yet.
     const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
             data: {
@@ -104,18 +112,8 @@ const registerOwner = async (payload: IRegisterOwnerPayload) => {
                 business_name: payload.businessName,
                 owner_email: email,
                 address: payload.address ?? "",
-                status: SubscriptionStatus.expired,
-                plan: "Trial",
-                trial_start: registeredAt,
-                trial_end: addDays(registeredAt, TRIAL_DAYS),
-                active_until: null,
-                plan_type: "free_trial",
-                plan_status: PlanStatus.expired,
-                start_date: registeredAt,
-                expiry_date: registeredAt,
-                // Trial not consumed yet - the owner starts it from the
-                // free-trial card popup on /choose-plan.
-                trial_used: false,
+                status: SubscriptionStatus.trial,
+                ...freeTrialFields(registeredAt),
             },
         });
 

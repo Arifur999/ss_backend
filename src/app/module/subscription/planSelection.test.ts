@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TRIAL_DAYS, hasLiveAccess, planSelectionFields, trialRefusal } from "./planSelection.js";
+import { TRIAL_DAYS, addDaysTo, freeTrialFields, hasLiveAccess, planSelectionFields, trialRefusal } from "./planSelection.js";
 
 // The helper hands back a loose bag of columns; these are the few this file
 // reads out of it.
@@ -149,5 +149,41 @@ describe("who may start the free trial", () => {
         // "used": the message that sends them to the super admin is the useful
         // one.
         assert.equal(trialRefusal({ ...fresh, status: "blocked", trial_used: true }, NOW), "locked");
+    });
+});
+
+describe("freeTrialFields", () => {
+    const NOW = new Date("2026-11-28T10:00:00Z");
+
+    /**
+     * Registration writes these, and so does the free-trial card. The whole
+     * point of the shared function is that signing up and pressing the card
+     * cannot produce different access.
+     */
+    it("opens a live trial of TRIAL_DAYS", () => {
+        const fields = freeTrialFields(NOW);
+        assert.equal(fields.plan_status, "active");
+        assert.equal(fields.plan_type, "free_trial");
+        assert.equal(fields.expiry_date.getTime(), addDaysTo(NOW, TRIAL_DAYS).getTime());
+        assert.equal(fields.start_date.getTime(), NOW.getTime());
+    });
+
+    /**
+     * hasActiveOwnerAccess reads exactly these two and nothing else. A row
+     * missing either is a workspace nobody can open, which is what
+     * registration used to create.
+     */
+    it("carries the two columns access is decided by", () => {
+        const fields = freeTrialFields(NOW);
+        assert.equal(fields.plan_status, "active");
+        assert.ok(fields.expiry_date.getTime() > NOW.getTime());
+    });
+
+    it("marks the trial as used, so it cannot be started twice", () => {
+        assert.equal(freeTrialFields(NOW).trial_used, true);
+    });
+
+    it("is what planSelectionFields writes for the free trial", () => {
+        assert.deepEqual(planSelectionFields("free_trial", {}, NOW), freeTrialFields(NOW));
     });
 });

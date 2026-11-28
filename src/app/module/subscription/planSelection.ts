@@ -115,27 +115,37 @@ export function trialRefusal(existing: TrialSnapshot, now: Date): "used" | "lock
  * approval in superAdmin.service is what writes the real plan and dates, off
  * the payment row rather than off this.
  */
+/**
+ * A live free trial, as of `now`.
+ *
+ * Its own function, with its own shape rather than Record<string, unknown>,
+ * because registration writes it too - a brand-new subscription row needs
+ * every one of these columns, and a loose type would let one go missing with
+ * nothing to say so until an owner could not log in.
+ */
+export function freeTrialFields(now: Date) {
+    const expiry = addDaysTo(now, TRIAL_DAYS);
+    return {
+        plan: "Trial",
+        plan_type: "free_trial" as const,
+        plan_status: "active" as const,
+        trial_start: now,
+        trial_end: expiry,
+        active_until: expiry,
+        start_date: now,
+        expiry_date: expiry,
+        trial_used: true,
+        pending_plan_type: null,
+        blocked_reason: "",
+    };
+}
+
 export function planSelectionFields(
     planType: PlanTypeValue,
     existing: SubscriptionSnapshot,
     now: Date,
 ): PlanSelectionFields {
-    if (planType === "free_trial") {
-        const expiry = addDaysTo(now, TRIAL_DAYS);
-        return {
-            plan: "Trial",
-            plan_type: planType,
-            plan_status: "active",
-            trial_start: now,
-            trial_end: expiry,
-            active_until: expiry,
-            start_date: now,
-            expiry_date: expiry,
-            trial_used: true,
-            pending_plan_type: null,
-            blocked_reason: "",
-        };
-    }
+    if (planType === "free_trial") return freeTrialFields(now);
 
     return { pending_plan_type: planType };
 }
